@@ -11,64 +11,24 @@
     body { font-family: system-ui, sans-serif; margin: 0; padding: 12px; background: #121212; color: #f5f5f5; }
     .container { max-width: 600px; margin: 0 auto; }
     h2 { margin: 0 0 10px 0; text-align: center; font-size: 1.2rem; }
-    
-    /* Controlli superiori */
     .top-bar { display: flex; gap: 8px; margin-bottom: 10px; }
     input[type="password"] { flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #333; background: #1e1e1e; color: #fff; font-size: 14px; }
     #btnToggleGrid { padding: 10px 14px; background: #333; color: #fff; border: 1px solid #555; border-radius: 8px; font-size: 14px; cursor: pointer; }
-
-    /* Pannello Settaggio Griglia */
     #gridSettings { display: none; background: #1e1e1e; padding: 12px; border-radius: 8px; border: 1px solid #444; margin-bottom: 10px; font-size: 13px; }
     .setting-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
     .setting-row:last-child { margin-bottom: 0; }
     .setting-row input[type="range"] { width: 55%; }
-
-    /* Contenitore Camera + Mirino */
     .camera-wrapper { position: relative; width: 100%; border-radius: 12px; overflow: hidden; background: #000; }
     video { width: 100%; display: block; }
-
-    /* Overlay oscurato esterno + Cornice Mirino */
-    .viewfinder-overlay {
-      position: absolute;
-      top: 0; left: 0; right: 0; bottom: 0;
-      pointer-events: none; /* Permette di toccare sotto */
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    #mirino {
-      width: 90%;
-      height: 78%;
-      border: 2px solid #00e676;
-      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55); /* Oscura tutto ciò che è fuori dal foglio */
-      border-radius: 6px;
-      display: grid;
-      box-sizing: border-box;
-      position: relative;
-    }
-    .grid-cell {
-      border-right: 1px dashed rgba(0, 230, 118, 0.45);
-      border-bottom: 1px dashed rgba(0, 230, 118, 0.45);
-    }
-    .mirino-label {
-      position: absolute;
-      top: -22px;
-      left: 0;
-      background: #00e676;
-      color: #000;
-      font-size: 11px;
-      font-weight: bold;
-      padding: 2px 6px;
-      border-radius: 4px 4px 0 0;
-    }
-
-    /* Bottoni Azione */
+    .viewfinder-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; display: flex; align-items: center; justify-content: center; }
+    #mirino { width: 90%; height: 78%; border: 2px solid #00e676; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55); border-radius: 6px; display: grid; box-sizing: border-box; position: relative; }
+    .grid-cell { border-right: 1px dashed rgba(0, 230, 118, 0.45); border-bottom: 1px dashed rgba(0, 230, 118, 0.45); }
+    .mirino-label { position: absolute; top: -22px; left: 0; background: #00e676; color: #000; font-size: 11px; font-weight: bold; padding: 2px 6px; border-radius: 4px 4px 0 0; }
     .btn-group { display: flex; gap: 10px; margin: 12px 0; }
     button.action-btn { flex: 1; padding: 14px; font-size: 16px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; }
     #btnScatta { background: #007bff; color: white; }
     #btnScatta:disabled { background: #444; color: #888; }
     #btnCopia { background: #28a745; color: white; display: none; }
-
     #stato { text-align: center; font-size: 14px; color: #ffcc00; margin-bottom: 8px; min-height: 20px; }
     .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; margin-bottom: 8px; }
     .online { background: #1b5e20; color: #a5d6a7; }
@@ -83,10 +43,9 @@
 
   <div class="top-bar">
     <input type="password" id="apiKeyInput" placeholder="Gemini API Key (opzionale)">
-    <button id="btnToggleGrid">Griglia ⚙️</button>
+    <button id="btnToggleGrid">Griglia</button>
   </div>
 
-  <!-- Pannello Settaggio Righe e Colonne -->
   <div id="gridSettings">
     <div class="setting-row">
       <label>Righe guida: <strong id="valRighe">15</strong></label>
@@ -106,8 +65,7 @@
     </div>
   </div>
 
-  <!-- Area Fotocamera con Cornice Mirino -->
-  <div class="camera-wrapper" id="cameraWrapper">
+  <div class="camera-wrapper">
     <video id="camera" autoplay playsinline></video>
     <div class="viewfinder-overlay">
       <div id="mirino">
@@ -129,117 +87,6 @@
 </div>
 
 <script src="./scannerIbrido.js"></script>
-<script>
-  const video = document.getElementById('camera');
-  const canvas = document.getElementById('canvas');
-  const mirino = document.getElementById('mirino');
-  const cameraWrapper = document.getElementById('cameraWrapper');
-  const btnScatta = document.getElementById('btnScatta');
-  const btnCopia = document.getElementById('btnCopia');
-  const stato = document.getElementById('stato');
-  const outputJson = document.getElementById('outputJson');
-  const badgeContainer = document.getElementById('badgeContainer');
-  const apiKeyInput = document.getElementById('apiKeyInput');
-
-  // Controlli Griglia
-  const btnToggleGrid = document.getElementById('btnToggleGrid');
-  const gridSettings = document.getElementById('gridSettings');
-  const rangeRighe = document.getElementById('rangeRighe');
-  const rangeColonne = document.getElementById('rangeColonne');
-  const rangeAltezza = document.getElementById('rangeAltezza');
-  const rangeLarghezza = document.getElementById('rangeLarghezza');
-
-  btnToggleGrid.addEventListener('click', () => {
-    gridSettings.style.display = gridSettings.style.display === 'block' ? 'none' : 'block';
-  });
-
-  // Disegna le righe e colonne dentro il mirino
-  function aggiornaGriglia() {
-    const righe = parseInt(rangeRighe.value, 10);
-    const colonne = parseInt(rangeColonne.value, 10);
-    const altezza = rangeAltezza.value + '%';
-    const larghezza = rangeLarghezza.value + '%';
-
-    document.getElementById('valRighe').innerText = righe;
-    document.getElementById('valColonne').innerText = colonne;
-    document.getElementById('valAltezza').innerText = altezza;
-    document.getElementById('valLarghezza').innerText = larghezza;
-
-    mirino.style.height = altezza;
-    mirino.style.width = larghezza;
-
-    // Se sono 3 colonne (Maglia, Ruolo, Nome), imposta proporzioni realistiche per Mod. B
-    if (colonne === 3) {
-      mirino.style.gridTemplateColumns = '16% 14% 70%';
-    } else {
-      mirino.style.gridTemplateColumns = `repeat(${colonne}, 1fr)`;
-    }
-    mirino.style.gridTemplateRows = `repeat(${righe}, 1fr)`;
-
-    // Mantiene l'etichetta e rigenera le celle
-    mirino.innerHTML = '<span class="mirino-label">ALLINEA TABELLA GIOCATORI QUI</span>';
-    const totaleCelle = righe * colonne;
-    for (let i = 0; i < totaleCelle; i++) {
-      const cell = document.createElement('div');
-      cell.className = 'grid-cell';
-      mirino.appendChild(cell);
-    }
-
-    // Salva preferenze utente
-    localStorage.setItem('grid_prefs', JSON.stringify({ righe, colonne, altezza: rangeAltezza.value, larghezza: rangeLarghezza.value }));
-  }
-
-  // Carica eventuali preferenze griglia salvate
-  const savedPrefs = JSON.parse(localStorage.getItem('grid_prefs') || 'null');
-  if (savedPrefs) {
-    rangeRighe.value = savedPrefs.righe;
-    rangeColonne.value = savedPrefs.colonne;
-    rangeAltezza.value = savedPrefs.altezza;
-    rangeLarghezza.value = savedPrefs.larghezza;
-  }
-  [rangeRighe, rangeColonne, rangeAltezza, rangeLarghezza].forEach(el => el.addEventListener('input', aggiornaGriglia));
-  aggiornaGriglia();
-
-  // API Key
-  apiKeyInput.value = localStorage.getItem('gemini_api_key') || '';
-  apiKeyInput.addEventListener('change', () => {
-    localStorage.setItem('gemini_api_key', apiKeyInput.value.trim());
-  });
-
-  // 1. Avvio Fotocamera
-  async function avviaCamera() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'environment',
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
-        },
-        audio: false
-      });
-      video.srcObject = stream;
-      stato.innerText = navigator.onLine ? "Pronto (Online)" : "Pronto (Modalità Offline/Aereo)";
-    } catch (err) {
-      stato.innerText = "Errore camera: " + err.message;
-    }
-  }
-
-  // 2. Scatto con RITAGLIO AUTOMATICO sull'area del mirino
-  btnScatta.addEventListener('click', async () => {
-    btnScatta.disabled = true;
-    btnCopia.style.display = 'none';
-    badgeContainer.innerHTML = '';
-
-    // Calcola le proporzioni tra il video mostrato a schermo e la risoluzione reale della fotocamera
-    const videoRect = video.getBoundingClientRect();
-    const mirinoRect = mirino.getBoundingClientRect();
-
-    const scaleX = video.videoWidth / videoRect.width;
-    const scaleY = video.videoHeight / videoRect.height;
-
-    const cropX = (mirinoRect.left - videoRect.left) * scaleX;
-    const cropY = (mirinoRect.top - videoRect.top) * scaleY;
-    const cropWidth = mirinoRect.width * scaleX;
-    const cropHeight = mirinoRect.height * scaleY;
-
-    // Imposta il canvas esattamente della dimensione ritagliata
+<script src="./app.js"></script>
+</body>
+</html>
