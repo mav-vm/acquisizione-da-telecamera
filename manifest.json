@@ -1,0 +1,9 @@
+{
+  "name": "Scanner Distinte Mod. B",
+  "short_name": "ModB OCR",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#121212",
+  "theme_color": "#007bff",
+  "orientation": "portrait"
+}
