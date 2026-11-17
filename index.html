@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mod. B Scanner</title>
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#007bff">
+  <script src="https://jsdelivr.net"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: #121212; color: #f5f5f5; }
+    .container { max-width: 600px; margin: 0 auto; }
+    h2 { margin-top: 0; text-align: center; font-size: 1.3rem; }
+    input[type="password"] { width: 100%; padding: 10px; margin-bottom: 12px; border-radius: 8px; border: 1px solid #333; background: #1e1e1e; color: #fff; box-sizing: border-box; }
+    video { width: 100%; border-radius: 12px; background: #000; display: block; }
+    .btn-group { display: flex; gap: 10px; margin: 14px 0; }
+    button { flex: 1; padding: 14px; font-size: 16px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; }
+    #btnScatta { background: #007bff; color: white; }
+    #btnScatta:disabled { background: #444; color: #888; }
+    #btnCopia { background: #28a745; color: white; display: none; }
+    #stato { text-align: center; font-size: 14px; color: #ffcc00; margin-bottom: 10px; min-height: 20px; }
+    .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; margin-bottom: 8px; }
+    .online { background: #1b5e20; color: #a5d6a7; }
+    .offline { background: #e65100; color: #ffe0b2; }
+    pre { background: #1e1e1e; padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 13px; border: 1px solid #333; color: #80cbc4; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2>Scanner Distinta Mod. B</h2>
+
+  <!-- Inserisci qui la tua Gemini API Key (opzionale: se vuota o offline usa Tesseract) -->
+  <input type="password" id="apiKeyInput" placeholder="Gemini API Key (opzionale per lettura penna online)">
+
+  <!-- Flusso video fotocamera posteriore -->
+  <video id="camera" autoplay playsinline></video>
+
+  <div class="btn-group">
+    <button id="btnScatta">Scatta ed Estrai JSON</button>
+    <button id="btnCopia">Copia JSON</button>
+  </div>
+
+  <div id="stato">Avvio fotocamera...</div>
+  <div id="badgeContainer"></div>
+  <pre id="outputJson">// Il risultato JSON apparirà qui...</pre>
+
+  <canvas id="canvas" style="display:none;"></canvas>
+</div>
+
+<script src="./scannerIbrido.js"></script>
+<script>
+  const video = document.getElementById('camera');
+  const canvas = document.getElementById('canvas');
+  const btnScatta = document.getElementById('btnScatta');
+  const btnCopia = document.getElementById('btnCopia');
+  const stato = document.getElementById('stato');
+  const outputJson = document.getElementById('outputJson');
+  const badgeContainer = document.getElementById('badgeContainer');
+  const apiKeyInput = document.getElementById('apiKeyInput');
+
+  // Salva/recupera la API Key in locale per non doverla riscrivere
+  apiKeyInput.value = localStorage.getItem('gemini_api_key') || '';
+  apiKeyInput.addEventListener('change', () => {
+    localStorage.setItem('gemini_api_key', apiKeyInput.value.trim());
+  });
+
+  // 1. Avvio fotocamera posteriore in alta risoluzione
+  async function avviaCamera() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'environment',
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        },
+        audio: false
+      });
+      video.srcObject = stream;
+      stato.innerText = navigator.onLine ? "Pronto (Online)" : "Pronto (Modalità Offline/Aereo)";
+    } catch (err) {
+      stato.innerText = "Errore camera: " + err.message;
+    }
+  }
+
+  // 2. Scatto ed estrazione
+  btnScatta.addEventListener('click', async () => {
+    btnScatta.disabled = true;
+    btnCopia.style.display = 'none';
+    badgeContainer.innerHTML = '';
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    try {
+      const risultato = await elaboraDistinta(
+        canvas,
+        apiKeyInput.value.trim(),
+        (msg) => { stato.innerText = msg; }
+      );
+
+      // Mostra badge della sorgente usata
+      if (risultato.fonte === 'GEMINI_CLOUD') {
+        badgeContainer.innerHTML = '<span class="badge online">ONLINE: Letto con Gemini AI (incluse correzioni a penna)</span>';
+      } else {
+        badgeContainer.innerHTML = '<span class="badge offline">OFFLINE: Letto localmente (verifica i numeri a penna)</span>';
+      }
+
+      outputJson.textContent = JSON.stringify(risultato.dati, null, 2);
+      stato.innerText = `Estratti ${risultato.dati.length} giocatori.`;
+      btnCopia.style.display = 'block';
+    } catch (err) {
+      stato.innerText = "Errore: " + err.message;
+    } finally {
+      btnScatta.disabled = false;
+    }
+  });
+
+  // 3. Copia rapida negli appunti
+  btnCopia.addEventListener('click', () => {
+    navigator.clipboard.writeText(outputJson.textContent);
+    btnCopia.innerText = "Copiato!";
+    setTimeout(() => { btnCopia.innerText = "Copia JSON"; }, 2000);
+  });
+
+  // 4. Registrazione Service Worker per funzionamento offline/aereo
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch(console.error);
+    });
+  }
+
+  avviaCamera();
+</script>
+</body>
+</html>
