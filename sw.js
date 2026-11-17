@@ -1,4 +1,4 @@
-const CACHE_NAME = 'modb-ocr-cache-v1';
+const CACHE_NAME = 'modb-ocr-cache-v2';
 const ASSETS = [
   './',
   './index.html',
