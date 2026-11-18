@@ -12,56 +12,158 @@
     body { background: #121212; color: #ffffff; display: flex; flex-direction: column; min-height: 100vh; padding: 12px; }
     header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
     h1 { font-size: 1.1rem; color: #4da3ff; }
-    button { background: #007bff; color: white; border: none; padding: 10px 14px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 0.95rem; }
+    button { background: #007bff; color: white; border: none; padding: 10px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 0.9rem; }
     button:disabled { background: #555; cursor: not-allowed; }
     button.secondary { background: #333; }
-    #gridSettings { display: none; background: #1e1e1e; padding: 12px; border-radius: 8px; margin-bottom: 10px; border: 1px solid #333; }
-    .setting-row { display: flex; flex-direction: column; margin-bottom: 8px; font-size: 0.85rem; }
+    button.warning { background: #f57c00; color: #fff; }
+    button.danger-small { background: #c62828; padding: 6px 8px; font-size: 0.85rem; }
+
+    /* Pannello impostazioni griglia */
+    #gridSettings { display: none; background: #1e1e1e; padding: 12px; border-radius: 8px; margin-bottom: 10px; border: 1px solid #333; max-height: 55vh; overflow-y: auto; }
+    .setting-row { display: flex; flex-direction: column; margin-bottom: 10px; font-size: 0.85rem; }
     .setting-row input[type="range"] { width: 100%; margin-top: 4px; }
     .setting-row input[type="password"] { width: 100%; padding: 8px; margin-top: 4px; border-radius: 4px; border: 1px solid #444; background: #2a2a2a; color: #fff; }
-    .camera-container { position: relative; width: 100%; height: 55vh; background: #000; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+    .settings-grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    /* Area Fotocamera e Mirino */
+    .camera-container { position: relative; width: 100%; height: 58vh; background: #000; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
     video { width: 100%; height: 100%; object-fit: cover; }
-    #mirino { position: absolute; border: 2px solid #00ff88; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55); display: grid; pointer-events: none; }
-    .mirino-label { position: absolute; top: -22px; left: 0; background: #00ff88; color: #000; font-size: 0.7rem; font-weight: bold; padding: 2px 6px; border-radius: 4px 4px 0 0; }
-    .grid-cell { border: 1px dashed rgba(0, 255, 136, 0.35); }
-    .controls { display: flex; gap: 8px; margin-top: 12px; }
-    .controls button { flex: 1; }
+    #mirino { position: absolute; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6); display: grid; pointer-events: none; }
+    .mirino-label { position: absolute; top: -22px; left: 0; background: #00e676; color: #000; font-size: 0.7rem; font-weight: bold; padding: 2px 6px; border-radius: 4px 4px 0 0; }
+
+    /* Colori colonne fedeli al Mod. B */
+    .col-maglia { border: 1.5px solid #e040fb; background: rgba(224, 64, 251, 0.06); }
+    .col-ruolo { border: 1.5px solid #ff1744; background: rgba(255, 23, 68, 0.10); }
+    .col-nome { border: 1.5px solid #2979ff; background: rgba(41, 121, 255, 0.06); }
+
+    /* Fascia separatrice Giocatori in panchina */
+    .row-panchina {
+      grid-column: 1 / -1;
+      border: 1.5px solid #ffea00;
+      background: rgba(255, 234, 0, 0.22);
+      color: #ffea00;
+      font-size: 0.65rem;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      padding-left: 6px;
+      text-shadow: 0 1px 2px #000;
+    }
+
+    .controls { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+    .controls button { flex: 1; min-width: 110px; }
     #stato { margin-top: 10px; font-size: 0.9rem; color: #ccc; text-align: center; }
     #badgeContainer { text-align: center; margin-top: 8px; }
     .badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: bold; }
     .badge.online { background: #1b5e20; color: #a5d6a7; }
     .badge.offline { background: #e65100; color: #ffcc80; }
-    pre { background: #1e1e1e; padding: 12px; border-radius: 8px; margin-top: 10px; overflow-x: auto; font-size: 0.85rem; color: #00ff88; border: 1px solid #333; max-height: 30vh; }
+    pre { background: #1e1e1e; padding: 12px; border-radius: 8px; margin-top: 10px; overflow-x: auto; font-size: 0.85rem; color: #00ff88; border: 1px solid #333; max-height: 28vh; }
     canvas { display: none; }
+
+    /* Pop-up Editor e Correzione Duplicati */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.85);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+    }
+    .modal-box {
+      background: #1e1e1e;
+      border: 2px solid #4da3ff;
+      border-radius: 10px;
+      width: 100%;
+      max-width: 540px;
+      max-height: 88vh;
+      display: flex;
+      flex-direction: column;
+      padding: 14px;
+    }
+    .modal-box.has-errors { border-color: #ff1744; }
+    .modal-header { margin-bottom: 10px; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+    .modal-header h2 { color: #4da3ff; font-size: 1.05rem; margin-bottom: 4px; }
+    .modal-box.has-errors .modal-header h2 { color: #ff5252; }
+    .modal-header p { font-size: 0.82rem; color: #ddd; }
+    .modal-list { overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 6px; padding-right: 4px; }
+    .player-edit-row {
+      display: grid;
+      grid-template-columns: 50px 54px 1fr 32px;
+      gap: 6px;
+      padding: 6px;
+      background: #2a2a2a;
+      border-radius: 6px;
+      border: 1px solid #3a3a3a;
+      align-items: center;
+    }
+    .player-edit-row.is-duplicate {
+      background: rgba(255, 23, 68, 0.25);
+      border: 1.5px solid #ff1744;
+    }
+    .player-edit-row input {
+      width: 100%;
+      padding: 6px;
+      background: #121212;
+      color: #fff;
+      border: 1px solid #555;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      font-weight: bold;
+    }
+    .player-edit-row.is-duplicate input.edit-maglia {
+      border-color: #ff1744;
+      color: #ff8a80;
+    }
+    .modal-footer { margin-top: 12px; display: flex; gap: 8px; }
+    .modal-footer button { flex: 1; }
   </style>
 </head>
 <body>
 
   <header>
     <h1>Scanner Distinta Mod. B</h1>
-    <button id="btnToggleGrid" class="secondary">Impostazioni / Griglia</button>
+    <button id="btnToggleGrid" class="secondary">Regola Griglia / API</button>
   </header>
 
   <div id="gridSettings">
     <div class="setting-row">
-      <label for="apiKeyInput">Gemini API Key (opzionale per modalità Online):</label>
+      <label for="apiKeyInput">Gemini API Key (per analisi Online):</label>
       <input type="password" id="apiKeyInput" placeholder="Incolla qui la tua API Key AIza...">
     </div>
-    <div class="setting-row">
-      <label>Righe guida: <strong id="valRighe">15</strong></label>
-      <input type="range" id="rangeRighe" min="10" max="25" value="15">
+
+    <div class="settings-grid-2col">
+      <div class="setting-row">
+        <label>Righe Titolari: <strong id="valRigheTit">15</strong></label>
+        <input type="range" id="rangeRigheTit" min="10" max="18" value="15">
+      </div>
+      <div class="setting-row">
+        <label>Righe Riserve: <strong id="valRigheRis">7</strong></label>
+        <input type="range" id="rangeRigheRis" min="0" max="12" value="7">
+      </div>
     </div>
-    <div class="setting-row">
-      <label>Colonne guida: <strong id="valColonne">3</strong></label>
-      <input type="range" id="rangeColonne" min="1" max="5" value="3">
+
+    <div class="settings-grid-2col">
+      <div class="setting-row">
+        <label>Larghezza N. Maglia: <strong id="valColMaglia">12%</strong></label>
+        <input type="range" id="rangeColMaglia" min="8" max="22" value="12">
+      </div>
+      <div class="setting-row">
+        <label>Larghezza Ruolo (Rosso): <strong id="valColRuolo">11%</strong></label>
+        <input type="range" id="rangeColRuolo" min="7" max="20" value="11">
+      </div>
     </div>
-    <div class="setting-row">
-      <label>Altezza mirino: <strong id="valAltezza">78%</strong></label>
-      <input type="range" id="rangeAltezza" min="30" max="95" value="78">
-    </div>
-    <div class="setting-row">
-      <label>Larghezza mirino: <strong id="valLarghezza">90%</strong></label>
-      <input type="range" id="rangeLarghezza" min="50" max="98" value="90">
+
+    <div class="settings-grid-2col">
+      <div class="setting-row">
+        <label>Altezza mirino: <strong id="valAltezza">82%</strong></label>
+        <input type="range" id="rangeAltezza" min="40" max="96" value="82">
+      </div>
+      <div class="setting-row">
+        <label>Larghezza mirino: <strong id="valLarghezza">92%</strong></label>
+        <input type="range" id="rangeLarghezza" min="60" max="98" value="92">
+      </div>
     </div>
   </div>
 
@@ -71,13 +173,32 @@
   </div>
 
   <div class="controls">
-    <button id="btnScatta">Scatta ed Estrai JSON</button>
+    <button id="btnScatta">Scatta ed Estrai</button>
+    <button id="btnModificaLista" class="warning" style="display: none;">Modifica Lista</button>
     <button id="btnCopia" class="secondary" style="display: none;">Copia JSON</button>
   </div>
 
   <div id="stato">Avvio fotocamera...</div>
   <div id="badgeContainer"></div>
   <pre id="outputJson">// Il risultato JSON apparirà qui...</pre>
+
+  <!-- Pop-up Editor e Verifica Duplicati -->
+  <div id="modalDuplicati" class="modal-overlay">
+    <div id="modalBox" class="modal-box">
+      <div class="modal-header">
+        <div>
+          <h2 id="modalTitle">Verifica e Modifica Giocatori</h2>
+          <p id="modalMsg">Controlla i dati estratti e premi Conferma per generare il JSON.</p>
+        </div>
+        <button id="btnAggiungiRiga" class="secondary" style="padding: 6px 10px; font-size: 0.8rem;">+ Riga</button>
+      </div>
+      <div id="modalList" class="modal-list"></div>
+      <div class="modal-footer">
+        <button id="btnForzaJson" class="secondary">Chiudi / Forza JSON</button>
+        <button id="btnConfermaCorrezione">Conferma e Ricontrolla</button>
+      </div>
+    </div>
+  </div>
 
   <canvas id="canvas"></canvas>
 

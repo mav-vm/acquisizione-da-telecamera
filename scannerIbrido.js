@@ -29,7 +29,7 @@ async function estraiConGemini(canvasElement, apiKey) {
       type: "OBJECT",
       properties: {
         maglia: { type: "STRING", description: "Numero di maglia definitivo (se corretto a penna usa quello a penna)" },
-        ruolo: { type: "STRING", description: "Sigla del ruolo (es. E, AD, CS, RI)" },
+        ruolo: { type: "STRING", description: "Sigla del ruolo (es. E, AD, CS, CD, AS, MA, MM, 3C, 3S, 3D, 2S, 2D, PD, T, PS, RI)" },
         cognome_nome: { type: "STRING", description: "Cognome e Nome del giocatore" }
       },
       required: ["maglia", "ruolo", "cognome_nome"]
@@ -39,7 +39,7 @@ async function estraiConGemini(canvasElement, apiKey) {
   const payload = {
     contents: [{
       parts: [
-        { text: "Estrai dal Mod. B tutti i giocatori (titolari e panchina). Se un numero di maglia è barrato e riscritto a penna, restituisci il numero scritto a penna." },
+        { text: "Estrai dal Mod. B tutti i giocatori (titolari e riserve sotto 'Giocatori in panchina'). Ignora la riga separatrice 'Giocatori in panchina'. Se un numero di maglia è barrato e riscritto a penna, restituisci il numero scritto a penna." },
         { inline_data: { mime_type: "image/jpeg", data: base64Image } }
       ]
     }],
@@ -107,6 +107,7 @@ function analizzaTestoModB(testoGrezzo) {
   const regexRiga = /^\s*(\d{1,2})[^\w\n]*([A-Z0-9]{1,3})\s+([A-ZÀ-Ü'\s,().-]{5,})/;
 
   for (const riga of righe) {
+    if (riga.toUpperCase().includes('PANCHINA')) continue;
     const match = riga.match(regexRiga);
     if (match) {
       const numero = parseInt(match[1], 10);
