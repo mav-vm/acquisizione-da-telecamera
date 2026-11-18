@@ -299,33 +299,94 @@ btnCopia.addEventListener('click', async () => {
 });
 
 // Versione robusta di avviaCamera con fallback se la risoluzione HD blocca il dispositivo
+// Sostituisci tutta la parte finale di app.js da "async function avviaCamera" in poi con questo:
+
+function avviaCameraConTimeout(vincoli, ms = 4000) {
+  return Promise.race([
+    navigator.mediaDevices.getUserMedia(vincoli),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Timeout fotocamera (browser bloccato)")), ms)
+    )
+  ]);
+}
+
 async function avviaCameraSicura() {
+  stato.innerText = "Richiesta accesso fotocamera...";
+
+  if (!window.isSecureContext) {
+    stato.innerText = "Errore: l'app richiede HTTPS per usare la fotocamera.";
+    return;
+  }
+
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    stato.innerText = "Fotocamera non supportata in questo browser. Apri in Chrome o Safari.";
+    stato.innerText = "Fotocamera non supportata qui. Apri il link in Chrome o Safari.";
     return;
   }
 
   try {
-    // Primo tentativo: fotocamera posteriore
-    const stream = await navigator.mediaDevices.getUserMedia({
+    const stream = await avviaCameraConTimeout({
       video: { facingMode: { ideal: 'environment' } },
       audio: false
-    });
+    }, 4000);
     video.srcObject = stream;
     await video.play();
     stato.innerText = navigator.onLine ? "Pronto (Online)" : "Pronto (Modalità Offline)";
   } catch (err) {
-    // Fallback generico se facingMode fallisce
     try {
-      const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      const fallbackStream = await avviaCameraConTimeout({ video: true, audio: false }, 3000);
       video.srcObject = fallbackStream;
       await video.play();
       stato.innerText = "Pronto (Fotocamera standard)";
     } catch (err2) {
-      stato.innerText = "Accesso fotocamera negato o bloccato: " + err2.message;
+      stato.innerHTML = `Fotocamera bloccata (${err2.message}).<br><strong>Tocca i 3 puntini in alto a destra &rarr; "Apri in Chrome"</strong> oppure premi il tasto blu sotto.`;
+      btnScatta.innerText = "Riprova / Carica Foto";
     }
   }
 }
 
 avviaCameraSicura();
+
+const inputFotoNativa = document.getElementById('inputFotoNativa');
+const btnFotoNativa = document.getElementById('btnFotoNativa');
+
+if (btnFotoNativa && inputFotoNativa) {
+  btnFotoNativa.addEventListener('click', () => inputFotoNativa.click());
+
+  inputFotoNativa.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const img = new Image();
+    img.onload = async () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+
+      stato.innerText = "Elaborazione foto acquisita...";
+      try {
+        const apiKey = apiKeyInput.value.trim();
+        const risultato = await elaboraDistinta(canvas, apiKey, (msg) => {
+          stato.innerText = msg;
+        });
+        datiTemporanei = risultato.dati;
+        fonteTemporanea = risultato.fonte;
+
+        const duplicati = trovaMaglieDuplicate(datiTemporanei);
+        if (duplicati.length > 0) {
+          apriEditorLista(datiTemporanei, duplicati);
+        } else {
+          finalizzaOutputJson(datiTemporanei, fonteTemporanea);
+        }
+      } catch (err) {
+        stato.innerText = "Errore estrazione: " + err.message;
+      }
+    };
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+
+
+
 
