@@ -1,18 +1,33 @@
-function assicuraTesseract() {
+function caricaScript(url) {
   return new Promise((resolve, reject) => {
-    if (typeof Tesseract !== 'undefined') {
-      resolve(Tesseract);
-      return;
-    }
     const script = document.createElement('script');
-    script.src = 'https://jsdelivr.net';
+    script.src = url;
+    script.crossOrigin = 'anonymous';
     script.onload = () => resolve(window.Tesseract);
-    script.onerror = () => reject(new Error("Impossibile scaricare Tesseract (sei offline e non è in cache)."));
+    script.onerror = () => reject(new Error('Errore caricamento: ' + url));
     document.head.appendChild(script);
   });
 }
 
+async function assicuraTesseract() {
+  if (typeof window.Tesseract !== 'undefined') {
+    return window.Tesseract;
+  }
 
+  const urls = [
+    'https://jsdelivr.net',
+    'https://unpkg.com'
+  ];
+
+  for (const url of urls) {
+    try {
+      return await caricaScript(url);
+    } catch (e) {
+      console.warn(e.message);
+    }
+  }
+  throw new Error("Impossibile scaricare Tesseract. Controlla la rete o inserisci la Gemini API Key.");
+}
 
 async function elaboraDistinta(canvasElement, apiKey, onStatusUpdate) {
   if (navigator.onLine && apiKey) {
@@ -22,16 +37,19 @@ async function elaboraDistinta(canvasElement, apiKey, onStatusUpdate) {
       return { fonte: "GEMINI_CLOUD", dati: giocatori };
     } catch (errore) {
       console.warn("Fallback su Tesseract offline:", errore);
-      onStatusUpdate("Rete lenta/errore API: passaggio a OCR offline...");
+      onStatusUpdate("Errore API (" + errore.message + "): passaggio a OCR offline...");
     }
   } else {
-    onStatusUpdate("Offline/Aereo: avvio OCR locale Tesseract...");
+    onStatusUpdate("Offline o senza API Key: avvio OCR locale Tesseract...");
   }
 
   const giocatoriOffline = await estraiConTesseractOffline(canvasElement, onStatusUpdate);
   return { fonte: "TESSERACT_OFFLINE", dati: giocatoriOffline };
 }
 
+/**
+ * Estrazione Online con Gemini 2.5 Flash
+ */
 async function estraiConGemini(canvasElement, apiKey) {
   const base64Image = canvasElement.toDataURL('image/jpeg', 0.85).split(',')[1];
   const url = `https://googleapis.com{encodeURIComponent(apiKey)}`;
@@ -63,9 +81,8 @@ async function estraiConGemini(canvasElement, apiKey) {
     }
   };
 
-  // Timeout massimo di 8 secondi per evitare blocchi su connessioni lente
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  const timeoutId = setTimeout(() => controller.abort(), 12000);
 
   const response = await fetch(url, {
     method: "POST",
@@ -80,6 +97,9 @@ async function estraiConGemini(canvasElement, apiKey) {
   return JSON.parse(data.candidates[0].content.parts[0].text);
 }
 
+/**
+ * Estrazione Offline con Tesseract.js
+ */
 async function estraiConTesseractOffline(canvasElement, onStatusUpdate) {
   onStatusUpdate("Caricamento motore OCR offline...");
   const TesseractLib = await assicuraTesseract();
@@ -99,7 +119,6 @@ async function estraiConTesseractOffline(canvasElement, onStatusUpdate) {
 
   return analizzaTestoModB(text);
 }
-
 
 function miglioraContrasto(sourceCanvas) {
   const tempCanvas = document.createElement('canvas');
