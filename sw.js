@@ -1,4 +1,4 @@
-const CACHE_NAME = 'modb-ocr-cache-v9';
+const CACHE_NAME = 'modb-ocr-cache-v10';
 const ASSETS = [
   './',
   './index.html',
@@ -25,27 +25,28 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+  // Non intercettare le chiamate API di Gemini
   if (event.request.url.includes('googleapis.com')) return;
 
-  // Risponde subito dalla cache se presente (zero attesa di rete)
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
-
-      // Se non è in cache, scarica con timeout massimo di 3 secondi
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000);
-
-      return fetch(event.request, { signal: controller.signal })
-        .then((response) => {
-          clearTimeout(timeoutId);
-          if (!response || response.status !== 200) return response;
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+  // Per i file esterni (es. Tesseract CDN), scarica normalmente e salva in cache per l'offline
+  if (!event.request.url.startsWith(self.location.origin)) {
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(event.request).then((response) => {
+          if (response && response.status === 200) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
           return response;
-        })
-        .catch(() => new Response('', { status: 408, statusText: 'Timeout rete' }));
-    })
+        });
+      })
+    );
+    return;
+  }
+
+  // Per i file locali dell'app: Cache-First istantaneo
+  event.respondWith(
+    caches.match(event.request).then((cached) => cached || fetch(event.request))
   );
 });
-

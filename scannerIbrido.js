@@ -1,3 +1,19 @@
+function assicuraTesseract() {
+  return new Promise((resolve, reject) => {
+    if (typeof Tesseract !== 'undefined') {
+      resolve(Tesseract);
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://jsdelivr.net';
+    script.onload = () => resolve(window.Tesseract);
+    script.onerror = () => reject(new Error("Impossibile scaricare Tesseract (sei offline e non è in cache)."));
+    document.head.appendChild(script);
+  });
+}
+
+
+
 async function elaboraDistinta(canvasElement, apiKey, onStatusUpdate) {
   if (navigator.onLine && apiKey) {
     try {
@@ -65,13 +81,11 @@ async function estraiConGemini(canvasElement, apiKey) {
 }
 
 async function estraiConTesseractOffline(canvasElement, onStatusUpdate) {
-  if (typeof Tesseract === 'undefined') {
-    throw new Error("Libreria Tesseract non ancora caricata. Riprova tra qualche secondo.");
-  }
-
+  onStatusUpdate("Caricamento motore OCR offline...");
+  const TesseractLib = await assicuraTesseract();
   const canvasOttimizzato = miglioraContrasto(canvasElement);
 
-  const { data: { text } } = await Tesseract.recognize(
+  const { data: { text } } = await TesseractLib.recognize(
     canvasOttimizzato,
     'ita',
     {
@@ -85,6 +99,7 @@ async function estraiConTesseractOffline(canvasElement, onStatusUpdate) {
 
   return analizzaTestoModB(text);
 }
+
 
 function miglioraContrasto(sourceCanvas) {
   const tempCanvas = document.createElement('canvas');
