@@ -260,3 +260,72 @@ btnScatta.addEventListener('click', async () => {
   const cropX = (mirinoRect.left - videoRect.left) * scaleX;
   const cropY = (mirinoRect.top - videoRect.top) * scaleY;
   const cropWidth = mirinoRect.width * scaleX;
+  const cropHeight = mirinoRect.height * scaleY;
+
+  canvas.width = cropWidth;
+  canvas.height = cropHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+
+  try {
+    const apiKey = apiKeyInput.value.trim();
+    const risultato = await elaboraDistinta(canvas, apiKey, (msg) => {
+      stato.innerText = msg;
+    });
+
+    datiTemporanei = risultato.dati;
+    fonteTemporanea = risultato.fonte;
+
+    const duplicati = trovaMaglieDuplicate(datiTemporanei);
+    if (duplicati.length > 0) {
+      apriEditorLista(datiTemporanei, duplicati);
+    } else {
+      finalizzaOutputJson(datiTemporanei, fonteTemporanea);
+    }
+  } catch (err) {
+    stato.innerText = "Errore durante l'estrazione: " + err.message;
+  } finally {
+    btnScatta.disabled = false;
+  }
+});
+
+btnCopia.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(outputJson.textContent);
+    stato.innerText = "JSON copiato negli appunti!";
+  } catch (err) {
+    stato.innerText = "Impossibile copiare automaticamente. Seleziona il testo.";
+  }
+});
+
+// Versione robusta di avviaCamera con fallback se la risoluzione HD blocca il dispositivo
+async function avviaCameraSicura() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    stato.innerText = "Fotocamera non supportata in questo browser. Apri in Chrome o Safari.";
+    return;
+  }
+
+  try {
+    // Primo tentativo: fotocamera posteriore
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+    stato.innerText = navigator.onLine ? "Pronto (Online)" : "Pronto (Modalità Offline)";
+  } catch (err) {
+    // Fallback generico se facingMode fallisce
+    try {
+      const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      video.srcObject = fallbackStream;
+      await video.play();
+      stato.innerText = "Pronto (Fotocamera standard)";
+    } catch (err2) {
+      stato.innerText = "Accesso fotocamera negato o bloccato: " + err2.message;
+    }
+  }
+}
+
+avviaCameraSicura();
+

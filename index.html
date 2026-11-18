@@ -6,203 +6,170 @@
   <title>Scanner Distinta Mod. B</title>
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#007bff">
-  <script src="https://jsdelivr.net"></script>
+  <!-- Caricamento asincrono (defer): non rallenta l'apertura dell'app -->
+  <script src="https://jsdelivr.net" defer></script>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
-    body { background: #121212; color: #ffffff; display: flex; flex-direction: column; min-height: 100vh; padding: 12px; }
-    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-    h1 { font-size: 1.1rem; color: #4da3ff; }
-    button { background: #007bff; color: white; border: none; padding: 10px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 0.9rem; }
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body { margin: 0; padding: 12px; background: #121212; color: #f0f0f0; }
+    h1 { font-size: 1.25rem; margin: 0 0 10px 0; text-align: center; }
+    
+    .top-bar { display: flex; justify-content: center; margin-bottom: 10px; }
+    button {
+      background: #007bff; color: white; border: none; padding: 10px 14px;
+      border-radius: 8px; font-size: 0.95rem; font-weight: 600; cursor: pointer;
+    }
     button:disabled { background: #555; cursor: not-allowed; }
-    button.secondary { background: #333; }
-    button.warning { background: #f57c00; color: #fff; }
-    button.danger-small { background: #c62828; padding: 6px 8px; font-size: 0.85rem; }
+    button.secondary { background: #333; border: 1px solid #555; }
+    button.success { background: #28a745; }
+    button.danger-small { background: #dc3545; padding: 4px 10px; font-size: 1rem; }
 
-    /* Pannello impostazioni griglia */
-    #gridSettings { display: none; background: #1e1e1e; padding: 12px; border-radius: 8px; margin-bottom: 10px; border: 1px solid #333; max-height: 55vh; overflow-y: auto; }
-    .setting-row { display: flex; flex-direction: column; margin-bottom: 10px; font-size: 0.85rem; }
-    .setting-row input[type="range"] { width: 100%; margin-top: 4px; }
-    .setting-row input[type="password"] { width: 100%; padding: 8px; margin-top: 4px; border-radius: 4px; border: 1px solid #444; background: #2a2a2a; color: #fff; }
-    .settings-grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    #gridSettings {
+      display: none; background: #1e1e1e; padding: 12px; border-radius: 8px;
+      margin-bottom: 12px; border: 1px solid #333; font-size: 0.85rem;
+    }
+    .setting-row { margin-bottom: 8px; }
+    .setting-row label { display: flex; justify-content: space-between; margin-bottom: 2px; }
+    .setting-row input[type="range"], .setting-row input[type="password"] {
+      width: 100%; padding: 6px; border-radius: 4px; border: 1px solid #444; background: #2a2a2a; color: #fff;
+    }
 
-    /* Area Fotocamera e Mirino */
-    .camera-container { position: relative; width: 100%; height: 58vh; background: #000; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-    video { width: 100%; height: 100%; object-fit: cover; }
-    #mirino { position: absolute; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6); display: grid; pointer-events: none; }
-    .mirino-label { position: absolute; top: -22px; left: 0; background: #00e676; color: #000; font-size: 0.7rem; font-weight: bold; padding: 2px 6px; border-radius: 4px 4px 0 0; }
-
-    /* Colori colonne fedeli al Mod. B */
-    .col-maglia { border: 1.5px solid #e040fb; background: rgba(224, 64, 251, 0.06); }
-    .col-ruolo { border: 1.5px solid #ff1744; background: rgba(255, 23, 68, 0.10); }
-    .col-nome { border: 1.5px solid #2979ff; background: rgba(41, 121, 255, 0.06); }
-
-    /* Fascia separatrice Giocatori in panchina */
+    /* Contenitore Fotocamera e Mirino */
+    .camera-wrapper {
+      position: relative; width: 100%; height: 55vh; max-height: 520px;
+      background: #000; border-radius: 10px; overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+    }
+    video#camera { width: 100%; height: 100%; object-fit: cover; }
+    
+    #mirino {
+      position: absolute; display: grid; border: 2px solid #00ff88;
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55); pointer-events: none;
+    }
+    .mirino-label {
+      position: absolute; top: -20px; left: 50%; transform: translateX(-50%);
+      background: #00ff88; color: #000; font-size: 0.65rem; font-weight: bold;
+      padding: 1px 6px; border-radius: 4px; white-space: nowrap;
+    }
+    .col-maglia { border: 1px solid rgba(180, 100, 255, 0.45); background: rgba(180, 100, 255, 0.08); }
+    .col-ruolo { border: 1px solid rgba(255, 80, 80, 0.45); background: rgba(255, 80, 80, 0.08); }
+    .col-nome { border: 1px solid rgba(80, 170, 255, 0.45); background: rgba(80, 170, 255, 0.08); }
     .row-panchina {
-      grid-column: 1 / -1;
-      border: 1.5px solid #ffea00;
-      background: rgba(255, 234, 0, 0.22);
-      color: #ffea00;
-      font-size: 0.65rem;
-      font-weight: bold;
-      display: flex;
-      align-items: center;
-      padding-left: 6px;
-      text-shadow: 0 1px 2px #000;
+      grid-column: 1 / -1; background: rgba(255, 215, 0, 0.35); color: #fff;
+      font-size: 0.65rem; font-weight: bold; display: flex; align-items: center;
+      justify-content: center; text-transform: uppercase;
     }
 
-    .controls { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
-    .controls button { flex: 1; min-width: 110px; }
-    #stato { margin-top: 10px; font-size: 0.9rem; color: #ccc; text-align: center; }
-    #badgeContainer { text-align: center; margin-top: 8px; }
-    .badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: bold; }
-    .badge.online { background: #1b5e20; color: #a5d6a7; }
-    .badge.offline { background: #e65100; color: #ffcc80; }
-    pre { background: #1e1e1e; padding: 12px; border-radius: 8px; margin-top: 10px; overflow-x: auto; font-size: 0.85rem; color: #00ff88; border: 1px solid #333; max-height: 28vh; }
-    canvas { display: none; }
+    .controls { display: flex; gap: 8px; margin-top: 12px; }
+    .controls button { flex: 1; }
+    #stato { text-align: center; font-size: 0.9rem; margin: 10px 0; color: #bbb; }
+    #badgeContainer { text-align: center; margin-bottom: 6px; }
+    .badge { padding: 3px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; }
+    .badge.online { background: #198754; color: #fff; }
+    .badge.offline { background: #fd7e14; color: #000; }
 
-    /* Pop-up Editor e Correzione Duplicati */
-    .modal-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.85);
-      z-index: 1000;
-      align-items: center;
-      justify-content: center;
-      padding: 12px;
+    pre#outputJson {
+      background: #1a1a1a; border: 1px solid #333; border-radius: 8px;
+      padding: 10px; font-size: 0.8rem; max-height: 220px; overflow: auto;
+      color: #8ce99a; white-space: pre-wrap;
     }
-    .modal-box {
-      background: #1e1e1e;
-      border: 2px solid #4da3ff;
-      border-radius: 10px;
-      width: 100%;
-      max-width: 540px;
-      max-height: 88vh;
-      display: flex;
-      flex-direction: column;
-      padding: 14px;
+
+    /* Modale Editor / Duplicati */
+    #modalDuplicati {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+      z-index: 999; align-items: center; justify-content: center; padding: 12px;
     }
-    .modal-box.has-errors { border-color: #ff1744; }
-    .modal-header { margin-bottom: 10px; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
-    .modal-header h2 { color: #4da3ff; font-size: 1.05rem; margin-bottom: 4px; }
-    .modal-box.has-errors .modal-header h2 { color: #ff5252; }
-    .modal-header p { font-size: 0.82rem; color: #ddd; }
-    .modal-list { overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 6px; padding-right: 4px; }
-    .player-edit-row {
-      display: grid;
-      grid-template-columns: 50px 54px 1fr 32px;
-      gap: 6px;
-      padding: 6px;
-      background: #2a2a2a;
-      border-radius: 6px;
-      border: 1px solid #3a3a3a;
-      align-items: center;
+    #modalBox {
+      background: #1e1e1e; border: 1px solid #444; border-radius: 10px;
+      width: 100%; max-width: 480px; max-height: 90vh; display: flex; flex-direction: column; padding: 14px;
     }
-    .player-edit-row.is-duplicate {
-      background: rgba(255, 23, 68, 0.25);
-      border: 1.5px solid #ff1744;
-    }
+    #modalBox.has-errors { border-color: #dc3545; }
+    #modalTitle { margin: 0 0 6px 0; font-size: 1.1rem; }
+    #modalMsg { font-size: 0.85rem; color: #ccc; margin: 0 0 10px 0; }
+    #modalList { overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+    .player-edit-row { display: grid; grid-template-columns: 50px 60px 1fr 34px; gap: 6px; }
     .player-edit-row input {
-      width: 100%;
-      padding: 6px;
-      background: #121212;
-      color: #fff;
-      border: 1px solid #555;
-      border-radius: 4px;
-      font-size: 0.85rem;
-      font-weight: bold;
+      background: #2c2c2c; border: 1px solid #555; color: #fff; padding: 6px; border-radius: 4px; font-size: 0.85rem;
     }
-    .player-edit-row.is-duplicate input.edit-maglia {
-      border-color: #ff1744;
-      color: #ff8a80;
-    }
-    .modal-footer { margin-top: 12px; display: flex; gap: 8px; }
-    .modal-footer button { flex: 1; }
+    .player-edit-row.is-duplicate input { border-color: #ff4d4d; background: #4a1c1c; }
+    .modal-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .modal-actions button { flex: 1; font-size: 0.85rem; padding: 8px; }
   </style>
 </head>
 <body>
 
-  <header>
-    <h1>Scanner Distinta Mod. B</h1>
-    <button id="btnToggleGrid" class="secondary">Regola Griglia / API</button>
-  </header>
+  <h1>Scanner Distinta Mod. B</h1>
+
+  <div class="top-bar">
+    <button type="button" id="btnToggleGrid" class="secondary">Regola Griglia / API</button>
+  </div>
 
   <div id="gridSettings">
     <div class="setting-row">
       <label for="apiKeyInput">Gemini API Key (per analisi Online):</label>
-      <input type="password" id="apiKeyInput" placeholder="Incolla qui la tua API Key AIza...">
+      <input type="password" id="apiKeyInput" placeholder="Incolla qui la tua API Key...">
     </div>
-
-    <div class="settings-grid-2col">
-      <div class="setting-row">
-        <label>Righe Titolari: <strong id="valRigheTit">15</strong></label>
-        <input type="range" id="rangeRigheTit" min="10" max="18" value="15">
-      </div>
-      <div class="setting-row">
-        <label>Righe Riserve: <strong id="valRigheRis">7</strong></label>
-        <input type="range" id="rangeRigheRis" min="0" max="12" value="7">
-      </div>
+    <div class="setting-row">
+      <label>Righe Titolari: <strong id="valRigheTit">15</strong></label>
+      <input type="range" id="rangeRigheTit" min="1" max="20" value="15">
     </div>
-
-    <div class="settings-grid-2col">
-      <div class="setting-row">
-        <label>Larghezza N. Maglia: <strong id="valColMaglia">12%</strong></label>
-        <input type="range" id="rangeColMaglia" min="8" max="22" value="12">
-      </div>
-      <div class="setting-row">
-        <label>Larghezza Ruolo (Rosso): <strong id="valColRuolo">11%</strong></label>
-        <input type="range" id="rangeColRuolo" min="7" max="20" value="11">
-      </div>
+    <div class="setting-row">
+      <label>Righe Riserve: <strong id="valRigheRis">7</strong></label>
+      <input type="range" id="rangeRigheRis" min="0" max="15" value="7">
     </div>
-
-    <div class="settings-grid-2col">
-      <div class="setting-row">
-        <label>Altezza mirino: <strong id="valAltezza">82%</strong></label>
-        <input type="range" id="rangeAltezza" min="40" max="96" value="82">
-      </div>
-      <div class="setting-row">
-        <label>Larghezza mirino: <strong id="valLarghezza">92%</strong></label>
-        <input type="range" id="rangeLarghezza" min="60" max="98" value="92">
-      </div>
+    <div class="setting-row">
+      <label>Larghezza N. Maglia: <strong id="valColMaglia">12%</strong></label>
+      <input type="range" id="rangeColMaglia" min="8" max="25" value="12">
+    </div>
+    <div class="setting-row">
+      <label>Larghezza Ruolo: <strong id="valColRuolo">11%</strong></label>
+      <input type="range" id="rangeColRuolo" min="8" max="25" value="11">
+    </div>
+    <div class="setting-row">
+      <label>Altezza mirino: <strong id="valAltezza">82%</strong></label>
+      <input type="range" id="rangeAltezza" min="40" max="98" value="82">
+    </div>
+    <div class="setting-row">
+      <label>Larghezza mirino: <strong id="valLarghezza">92%</strong></label>
+      <input type="range" id="rangeLarghezza" min="50" max="98" value="92">
     </div>
   </div>
 
-  <div class="camera-container">
-    <video id="camera" autoplay playsinline></video>
+  <div class="camera-wrapper">
+    <video id="camera" autoplay playsinline muted></video>
     <div id="mirino"></div>
   </div>
+  <canvas id="canvas" style="display:none;"></canvas>
 
   <div class="controls">
-    <button id="btnScatta">Scatta ed Estrai</button>
-    <button id="btnModificaLista" class="warning" style="display: none;">Modifica Lista</button>
-    <button id="btnCopia" class="secondary" style="display: none;">Copia JSON</button>
+    <button type="button" id="btnScatta">Scatta ed Estrai</button>
+    <button type="button" id="btnModificaLista" class="secondary" style="display:none;">Modifica Lista</button>
+    <button type="button" id="btnCopia" class="success" style="display:none;">Copia JSON</button>
   </div>
 
   <div id="stato">Avvio fotocamera...</div>
   <div id="badgeContainer"></div>
   <pre id="outputJson">// Il risultato JSON apparirà qui...</pre>
 
-  <!-- Pop-up Editor e Verifica Duplicati -->
-  <div id="modalDuplicati" class="modal-overlay">
-    <div id="modalBox" class="modal-box">
-      <div class="modal-header">
-        <div>
-          <h2 id="modalTitle">Verifica e Modifica Giocatori</h2>
-          <p id="modalMsg">Controlla i dati estratti e premi Conferma per generare il JSON.</p>
-        </div>
-        <button id="btnAggiungiRiga" class="secondary" style="padding: 6px 10px; font-size: 0.8rem;">+ Riga</button>
-      </div>
-      <div id="modalList" class="modal-list"></div>
-      <div class="modal-footer">
-        <button id="btnForzaJson" class="secondary">Chiudi / Forza JSON</button>
-        <button id="btnConfermaCorrezione">Conferma e Ricontrolla</button>
+  <!-- Pop-up Editor / Duplicati -->
+  <div id="modalDuplicati">
+    <div id="modalBox">
+      <h2 id="modalTitle">Verifica e Modifica Giocatori</h2>
+      <p id="modalMsg">Controlla i dati estratti e premi Conferma per generare il JSON.</p>
+      <div id="modalList"></div>
+      <div class="modal-actions">
+        <button type="button" id="btnAggiungiRiga" class="secondary">+ Riga</button>
+        <button type="button" id="btnForzaJson" class="secondary">Chiudi / Forza JSON</button>
+        <button type="button" id="btnConfermaCorrezione" class="success">Conferma e Ricontrolla</button>
       </div>
     </div>
   </div>
 
-  <canvas id="canvas"></canvas>
-
   <script src="./scannerIbrido.js"></script>
   <script src="./app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    }
+  </script>
 </body>
 </html>

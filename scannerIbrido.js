@@ -6,7 +6,7 @@ async function elaboraDistinta(canvasElement, apiKey, onStatusUpdate) {
       return { fonte: "GEMINI_CLOUD", dati: giocatori };
     } catch (errore) {
       console.warn("Fallback su Tesseract offline:", errore);
-      onStatusUpdate("Errore rete/API: passaggio a OCR offline...");
+      onStatusUpdate("Rete lenta/errore API: passaggio a OCR offline...");
     }
   } else {
     onStatusUpdate("Offline/Aereo: avvio OCR locale Tesseract...");
@@ -16,12 +16,9 @@ async function elaboraDistinta(canvasElement, apiKey, onStatusUpdate) {
   return { fonte: "TESSERACT_OFFLINE", dati: giocatoriOffline };
 }
 
-/**
- * Estrazione Online con Gemini 2.5 Flash (Structured Output JSON)
- */
 async function estraiConGemini(canvasElement, apiKey) {
   const base64Image = canvasElement.toDataURL('image/jpeg', 0.85).split(',')[1];
-  const url = `https://googleapis.com{apiKey}`;
+  const url = `https://googleapis.com{encodeURIComponent(apiKey)}`;
 
   const responseSchema = {
     type: "ARRAY",
@@ -50,21 +47,28 @@ async function estraiConGemini(canvasElement, apiKey) {
     }
   };
 
+  // Timeout massimo di 8 secondi per evitare blocchi su connessioni lente
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
+
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
+    signal: controller.signal
   });
+  clearTimeout(timeoutId);
 
   if (!response.ok) throw new Error("HTTP " + response.status);
   const data = await response.json();
   return JSON.parse(data.candidates[0].content.parts[0].text);
 }
 
-/**
- * Estrazione Offline con Tesseract.js
- */
 async function estraiConTesseractOffline(canvasElement, onStatusUpdate) {
+  if (typeof Tesseract === 'undefined') {
+    throw new Error("Libreria Tesseract non ancora caricata. Riprova tra qualche secondo.");
+  }
+
   const canvasOttimizzato = miglioraContrasto(canvasElement);
 
   const { data: { text } } = await Tesseract.recognize(
