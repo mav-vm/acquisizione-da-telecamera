@@ -1,4 +1,7 @@
-const CACHE_NAME = 'modb-ocr-cache-v11';
+
+importScripts('./version.js');
+
+const CACHE_NAME = 'modb-ocr-cache-v'+ APP_VERSION;
 const ASSETS = [
   './',
   './index.html',
