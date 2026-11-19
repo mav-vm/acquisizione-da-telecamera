@@ -1,7 +1,6 @@
-
 importScripts('./version.js');
 
-const CACHE_NAME = 'modb-ocr-cache-v'+ APP_VERSION;
+const CACHE_NAME = 'modb-ocr-cache-v' + APP_VERSION;
 const ASSETS = [
   './',
   './index.html',
@@ -13,7 +12,6 @@ const ASSETS = [
   './tesseract/tesseract-core.wasm.js',
   './tesseract/tesseract-core.wasm',
   './tesseract/ita.traineddata'
-  
 ];
 
 self.addEventListener('install', (event) => {

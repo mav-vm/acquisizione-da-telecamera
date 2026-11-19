@@ -16,7 +16,7 @@ async function assicuraTesseract() {
     return await caricaScript('./tesseract/tesseract.min.js');
   } catch (e) {
     console.error(e);
-    throw new Error("Impossibile caricare Tesseract locale. Verifica la cartella /tesseract.");
+    throw new Error("Impossibile caricare Tesseract locale.");
   }
 }
 
@@ -31,16 +31,13 @@ async function elaboraDistinta(canvasElement, apiKey, onStatusUpdate) {
       onStatusUpdate("Errore API (" + errore.message + "): passaggio a OCR offline...");
     }
   } else {
-    onStatusUpdate("Offline o senza API Key: avvio OCR locale Tesseract...");
+    onStatusUpdate("Avvio OCR locale Tesseract...");
   }
 
   const giocatoriOffline = await estraiConTesseractOffline(canvasElement, onStatusUpdate);
   return { fonte: "TESSERACT_OFFLINE", dati: giocatoriOffline };
 }
 
-/**
- * Estrazione Online con Gemini 2.5 Flash
- */
 async function estraiConGemini(canvasElement, apiKey) {
   const base64Image = canvasElement.toDataURL('image/jpeg', 0.85).split(',')[1];
   const proto = 'ht' + 'tps://';
@@ -53,8 +50,8 @@ async function estraiConGemini(canvasElement, apiKey) {
     items: {
       type: "OBJECT",
       properties: {
-        maglia: { type: "STRING", description: "Numero di maglia definitivo (se corretto a penna usa quello a penna)" },
-        ruolo: { type: "STRING", description: "Sigla del ruolo (es. E, AD, CS, CD, AS, MA, MM, 3C, 3S, 3D, 2S, 2D, PD, T, PS, RI)" },
+        maglia: { type: "STRING", description: "Numero di maglia definitivo (1-99, se corretto a penna usa quello a penna)" },
+        ruolo: { type: "STRING", description: "Sigla del ruolo (es. E, AD, CD, CS, AS, MA, MM, 3C, 3D, 3S, 2D, 2S, PD, T, PS, RI)" },
         cognome_nome: { type: "STRING", description: "Cognome e Nome del giocatore" }
       },
       required: ["maglia", "ruolo", "cognome_nome"]
@@ -64,7 +61,7 @@ async function estraiConGemini(canvasElement, apiKey) {
   const payload = {
     contents: [{
       parts: [
-        { text: "Estrai dal Mod. B tutti i giocatori (titolari e riserve sotto 'Giocatori in panchina'). Ignora la riga separatrice 'Giocatori in panchina'. Se un numero di maglia è barrato e riscritto a penna, restituisci il numero scritto a penna." },
+        { text: "Estrai dal Mod. B tutti i giocatori dall'alto verso il basso (titolari e riserve sotto 'Giocatori in panchina'). Ignora la riga separatrice 'Giocatori in panchina'. Se un numero di maglia è barrato e riscritto a penna, restituisci il numero scritto a penna." },
         { inline_data: { mime_type: "image/jpeg", data: base64Image } }
       ]
     }],
@@ -88,33 +85,7 @@ async function estraiConGemini(canvasElement, apiKey) {
 
   if (!response.ok) throw new Error("HTTP " + response.status);
   const data = await response.json();
-  return JSON.parse(data.candidates[0].content.parts[0].text);
-}
-
-/**
- * Estrazione Offline con Tesseract.js locale
- */
-async function estraiConTesseractOffline(canvasElement, onStatusUpdate) {
-  onStatusUpdate("Caricamento motore OCR locale...");
-  const TesseractLib = await assicuraTesseract();
-  const canvasOttimizzato = miglioraContrasto(canvasElement);
-
-  const worker = await TesseractLib.createWorker('ita', 1, {
-    workerPath: './tesseract/worker.min.js',
-    corePath: './tesseract/tesseract-core.wasm.js',
-    langPath: './tesseract',
-    gzip: false,
-    logger: m => {
-      if (m.status === 'recognizing text') {
-        onStatusUpdate(`Lettura offline: ${Math.round(m.progress * 100)}%`);
-      }
-    }
-  });
-
-  const { data: { text } } = await worker.recognize(canvasOttimizzato);
-  await worker.terminate();
-
-  return analizzaTestoModB(text);
+  return JSON.parse(data.candidates.content.parts[0].text);
 }
 
 function miglioraContrasto(sourceCanvas) {
@@ -136,25 +107,84 @@ function miglioraContrasto(sourceCanvas) {
   return tempCanvas;
 }
 
-function analizzaTestoModB(testoGrezzo) {
-  const righe = testoGrezzo.split('\n');
-  const giocatori = [];
-  const regexRiga = /^\s*(\d{1,2})[^\w\n]*([A-Z0-9]{1,3})\s+([A-ZÀ-Ü'\s,().-]{5,})/;
+function ritagliaFascia(sourceCanvas, startPercent, widthPercent) {
+  const temp = document.createElement('canvas');
+  const sx = Math.floor(sourceCanvas.width * startPercent);
+  const sw = Math.floor(sourceCanvas.width * widthPercent);
+  temp.width = Math.max(1, sw);
+  temp.height = sourceCanvas.height;
+  temp.getContext('2d').drawImage(
+    sourceCanvas,
+    sx, 0, sw, sourceCanvas.height,
+    0, 0, sw, sourceCanvas.height
+  );
+  return miglioraContrasto(temp);
+}
 
-  for (const riga of righe) {
-    if (riga.toUpperCase().includes('PANCHINA')) continue;
-    const match = riga.match(regexRiga);
-    if (match) {
-      const numero = parseInt(match[1], 10);
-      if (numero >= 1 && numero <= 26) {
-        const nomePulito = match[3].split(/\d{5,}/)[0].trim();
-        giocatori.push({
-          maglia: numero.toString(),
-          ruolo: match[2].trim(),
-          cognome_nome: nomePulito
-        });
+async function estraiConTesseractOffline(canvasElement, onStatusUpdate) {
+  onStatusUpdate("Caricamento motore OCR locale...");
+  const TesseractLib = await assicuraTesseract();
+
+  const colMaglia = (parseInt(document.getElementById('rangeColMaglia')?.value || 12, 10)) / 100;
+  const colRuolo = (parseInt(document.getElementById('rangeColRuolo')?.value || 11, 10)) / 100;
+
+  // Ritaglia separatamente colonna Maglia (evitando le linee di bordo) e colonna Cognome/Nome
+  const canvasMaglie = ritagliaFascia(canvasElement, 0.01, Math.max(0.05, colMaglia - 0.02));
+  const startNomi = colMaglia + colRuolo + 0.01;
+  const canvasNomi = ritagliaFascia(canvasElement, startNomi, Math.max(0.1, 1 - startNomi - 0.01));
+
+  const worker = await TesseractLib.createWorker('ita', 1, {
+    workerPath: './tesseract/worker.min.js',
+    corePath: './tesseract/tesseract-core.wasm.js',
+    langPath: './tesseract',
+    gzip: false,
+    logger: m => {
+      if (m.status === 'recognizing text') {
+        onStatusUpdate(`Lettura OCR: ${Math.round(m.progress * 100)}%`);
       }
     }
+  });
+
+  // 1. Legge SOLO numeri (0-9, inclusi 99) dalla prima colonna
+  await worker.setParameters({
+    tessedit_pageseg_mode: '6',
+    tessedit_char_whitelist: '0123456789'
+  });
+  const resMaglie = await worker.recognize(canvasMaglie);
+
+  // 2. Legge i nominativi dalla terza colonna
+  await worker.setParameters({
+    tessedit_pageseg_mode: '6',
+    tessedit_char_whitelist: ''
+  });
+  const resNomi = await worker.recognize(canvasNomi);
+
+  await worker.terminate();
+
+  return combinaMaglieENomi(resMaglie.data.text, resNomi.data.text);
+}
+
+function combinaMaglieENomi(testoMaglie, testoNomi) {
+  const numEstratti = testoMaglie
+    .split('\n')
+    .map(r => r.replace(/\D/g, '').trim())
+    .filter(n => n.length >= 1 && n.length <= 2);
+
+  const nomiEstratti = testoNomi
+    .split('\n')
+    .map(r => r.toUpperCase().replace(/[^A-ZÀ-Ü'\s.-]/g, ' ').replace(/\s+/g, ' ').trim())
+    .filter(n => n.length >= 4 && !n.includes('PANCHINA') && !n.includes('COGNOME'));
+
+  const totaleRighe = Math.max(numEstratti.length, nomiEstratti.length);
+  const giocatori = [];
+
+  for (let i = 0; i < totaleRighe; i++) {
+    giocatori.push({
+      maglia: numEstratti[i] || '',
+      ruolo: '',
+      cognome_nome: nomiEstratti[i] || ''
+    });
   }
+
   return giocatori;
 }
