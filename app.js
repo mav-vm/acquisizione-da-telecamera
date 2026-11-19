@@ -259,7 +259,7 @@ function finalizzaOutputJson(dati, fonte) {
     ? '<span class="badge online">ONLINE: Letto con Gemini AI</span>'
     : '<span class="badge offline">OFFLINE: Letto localmente</span>';
   outputJson.textContent = JSON.stringify(dati, null, 2);
-  stato.innerText = JSON pronto: ${dati.length} giocatori in lista.;
+  stato.innerText = 'JSON pronto: ${dati.length} giocatori in lista.';
 btnCopia.style.display = 'block';
 }
 // Ritaglio preciso compensando object-fit: cover su schermi allungati
