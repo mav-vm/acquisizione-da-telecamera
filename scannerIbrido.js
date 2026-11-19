@@ -125,13 +125,14 @@ async function estraiConTesseractOffline(canvasElement, onStatusUpdate) {
   onStatusUpdate("Caricamento motore OCR locale...");
   const TesseractLib = await assicuraTesseract();
 
-  const colMaglia = (parseInt(document.getElementById('rangeColMaglia')?.value || 12, 10)) / 100;
-  const colRuolo = (parseInt(document.getElementById('rangeColRuolo')?.value || 11, 10)) / 100;
+    // Percentuali esatte calibrate sul PDF reale FIR
+  const colMaglia = 0.119;
+  const colRuolo = 0.089;
 
-  // Ritaglia separatamente colonna Maglia (evitando le linee di bordo) e colonna Cognome/Nome
-  const canvasMaglie = ritagliaFascia(canvasElement, 0.01, Math.max(0.05, colMaglia - 0.02));
-  const startNomi = colMaglia + colRuolo + 0.01;
-  const canvasNomi = ritagliaFascia(canvasElement, startNomi, Math.max(0.1, 1 - startNomi - 0.01));
+  const canvasMaglie = ritagliaFascia(canvasElement, 0.005, colMaglia - 0.01);
+  const startNomi = colMaglia + colRuolo + 0.005;
+  const canvasNomi = ritagliaFascia(canvasElement, startNomi, 1 - startNomi - 0.005);
+
 
   const worker = await TesseractLib.createWorker('ita', 1, {
     workerPath: './tesseract/worker.min.js',
@@ -173,7 +174,7 @@ function combinaMaglieENomi(testoMaglie, testoNomi) {
   const nomiEstratti = testoNomi
     .split('\n')
     .map(r => r.toUpperCase().replace(/[^A-ZÀ-Ü'\s.-]/g, ' ').replace(/\s+/g, ' ').trim())
-    .filter(n => n.length >= 4 && !n.includes('PANCHINA') && !n.includes('COGNOME'));
+    .filter(n => n.length >= 4 && !n.includes('PANCHINA') && !n.includes('COGNOME')&& !/^\.+$/.test(n));
 
   const totaleRighe = Math.max(numEstratti.length, nomiEstratti.length);
   const giocatori = [];

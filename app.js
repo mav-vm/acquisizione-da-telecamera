@@ -46,6 +46,20 @@ const SCHEMA_MOD_B_TITOLARI = [
   { maglia: '1',  ruolo: 'PS' }
 ];
 
+// Coordinate percentuali esatte della tabella giocatori dentro il foglio A4 FIR
+const PDF_CALIBRATION = {
+  tableLeft: 0.012,    // 1.2% dal bordo sinistro A4
+  tableTop: 0.095,     // 9.5% dall'alto A4 (subito sotto intestazione N. Maglia | Ruolo | Cognome)
+  tableWidth: 0.587,   // 58.7% larghezza A4 (copre Maglia + Ruolo + Cognome e Nome)
+  tableHeight: 0.455,  // 45.5% altezza A4 (arriva fino alla riga 23 / fine panchina)
+  colMagliaPct: 11.9,  // 7.0% / 58.7% = 11.9% della zona ritagliata
+  colRuoloPct: 8.9     // 5.2% / 58.7% = 8.9% della zona ritagliata
+};
+
+
+
+
+
 let datiTemporanei = [];
 let fonteTemporanea = '';
 
@@ -92,56 +106,75 @@ btnToggleGrid.addEventListener('click', () => {
 });
 
 function aggiornaGriglia() {
-  const righeTit = parseInt(rangeRigheTit.value, 10);
-  const righeRis = parseInt(rangeRigheRis.value, 10);
-  const colMaglia = parseInt(rangeColMaglia.value, 10);
-  const colRuolo = parseInt(rangeColRuolo.value, 10);
-  const colNome = 100 - colMaglia - colRuolo;
   const altezza = rangeAltezza.value + '%';
-
-  document.getElementById('valRigheTit').innerText = righeTit;
-  document.getElementById('valRigheRis').innerText = righeRis;
-  document.getElementById('valColMaglia').innerText = colMaglia + '%';
-  document.getElementById('valColRuolo').innerText = colRuolo + '%';
   document.getElementById('valAltezza').innerText = altezza;
 
-  // Proporzione fissa A4 verticale (210x297) su qualsiasi smartphone
+  // Il mirino esterno rappresenta l'INTERO FOGLIO A4 (facile da inquadrare)
   mirino.style.height = altezza;
   mirino.style.aspectRatio = '210 / 297';
   mirino.style.width = 'auto';
   mirino.style.maxWidth = '94%';
-  mirino.style.gridTemplateColumns = `${colMaglia}% ${colRuolo}% ${colNome}%`;
+  mirino.style.display = 'block';
 
-  const templateRighe = righeRis > 0
-    ? `repeat(${righeTit}, 1fr) 0.9fr repeat(${righeRis}, 1fr)`
-    : `repeat(${righeTit}, 1fr)`;
-  mirino.style.gridTemplateRows = templateRighe;
-
-  mirino.innerHTML = '<span class="mirino-label">ALLINEA FOGLIO A4 MOD. B</span>';
-
-  for (let r = 0; r < righeTit; r++) {
-    mirino.appendChild(creaCella('col-maglia'));
-    mirino.appendChild(creaCella('col-ruolo'));
-    mirino.appendChild(creaCella('col-nome'));
-  }
-
-  if (righeRis > 0) {
-    const fascia = document.createElement('div');
-    fascia.className = 'row-panchina';
-    fascia.innerText = 'Giocatori in panchina';
-    mirino.appendChild(fascia);
-
-    for (let r = 0; r < righeRis; r++) {
-      mirino.appendChild(creaCella('col-maglia'));
-      mirino.appendChild(creaCella('col-ruolo'));
-      mirino.appendChild(creaCella('col-nome'));
-    }
-  }
-
-  localStorage.setItem('grid_prefs_modb', JSON.stringify({
-    righeTit, righeRis, colMaglia, colRuolo, altezza: rangeAltezza.value
-  }));
+  mirino.innerHTML = `
+    <span class="mirino-label">INQUADRA L'INTERO FOGLIO A4</span>
+    <div style="
+      position: absolute;
+      left: ${PDF_CALIBRATION.tableLeft * 100}%;
+      top: ${PDF_CALIBRATION.tableTop * 100}%;
+      width: ${PDF_CALIBRATION.tableWidth * 100}%;
+      height: ${PDF_CALIBRATION.tableHeight * 100}%;
+      border: 2px solid #3b82f6;
+      background: rgba(59, 130, 246, 0.12);
+      display: grid;
+      grid-template-columns: ${PDF_CALIBRATION.colMagliaPct}% ${PDF_CALIBRATION.colRuoloPct}% 1fr;
+    ">
+      <div style="border-right: 1px dashed #a855f7; background: rgba(168,85,247,0.12);"></div>
+      <div style="border-right: 1px dashed #ef4444; background: rgba(239,68,68,0.12);"></div>
+      <div></div>
+    </div>
+  `;
 }
+
+function catturaMirinoEsatto() {
+  const videoRect = video.getBoundingClientRect();
+  const mirinoRect = mirino.getBoundingClientRect();
+  const videoRatio = video.videoWidth / video.videoHeight;
+  const elemRatio = videoRect.width / videoRect.height;
+
+  let renderWidth, renderHeight, offsetX, offsetY;
+  if (elemRatio > videoRatio) {
+    renderWidth = videoRect.width;
+    renderHeight = videoRect.width / videoRatio;
+    offsetX = 0;
+    offsetY = (videoRect.height - renderHeight) / 2;
+  } else {
+    renderHeight = videoRect.height;
+    renderWidth = videoRect.height * videoRatio;
+    offsetX = (videoRect.width - renderWidth) / 2;
+    offsetY = 0;
+  }
+
+  const scaleX = video.videoWidth / renderWidth;
+  const scaleY = video.videoHeight / renderHeight;
+
+  // Coordinate dell'intero foglio A4 inquadrato nel mirino verde
+  const a4X = (mirinoRect.left - videoRect.left - offsetX) * scaleX;
+  const a4Y = (mirinoRect.top - videoRect.top - offsetY) * scaleY;
+  const a4W = mirinoRect.width * scaleX;
+  const a4H = mirinoRect.height * scaleY;
+
+  // Estrae AUTOMATICAMENTE solo il riquadro blu della tabella giocatori (Maglia + Ruolo + Nome)
+  const cropX = a4X + (a4W * PDF_CALIBRATION.tableLeft);
+  const cropY = a4Y + (a4H * PDF_CALIBRATION.tableTop);
+  const cropWidth = a4W * PDF_CALIBRATION.tableWidth;
+  const cropHeight = a4H * PDF_CALIBRATION.tableHeight;
+
+  canvas.width = cropWidth;
+  canvas.height = cropHeight;
+  canvas.getContext('2d').drawImage(video, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+}
+
 
 function creaCella(classe) {
   const cell = document.createElement('div');
@@ -366,12 +399,22 @@ const file = e.target.files[0];
 if (!file) return;
 const img = new Image();
 img.onload = async () => {
-canvas.width = img.width;
-canvas.height = img.height;
-canvas.getContext('2d').drawImage(img, 0, 0);
-stato.innerText = "Elaborazione foto acquisita...";
-await eseguiScansioneDaCanvas();
+  // Estrae la zona esatta della tabella giocatori dal foglio A4 acquisito
+  const cropX = img.width * PDF_CALIBRATION.tableLeft;
+  const cropY = img.height * PDF_CALIBRATION.tableTop;
+  const cropWidth = img.width * PDF_CALIBRATION.tableWidth;
+  const cropHeight = img.height * PDF_CALIBRATION.tableHeight;
+
+  canvas.width = cropWidth;
+  canvas.height = cropHeight;
+  canvas.getContext('2d').drawImage(img, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+
+  stato.innerText = "Elaborazione foto acquisita...";
+  await eseguiScansioneDaCanvas();
 };
+
+
+
 img.src = URL.createObjectURL(file);
 });
 }
