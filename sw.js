@@ -8,7 +8,12 @@ const ASSETS = [
   './app.js',
   './scannerIbrido.js',
   './manifest.json',
-  'https://jsdelivr.net'
+  './tesseract/tesseract.min.js',
+  './tesseract/worker.min.js',
+  './tesseract/tesseract-core.wasm.js',
+  './tesseract/tesseract-core.wasm',
+  './tesseract/ita.traineddata'
+  
 ];
 
 self.addEventListener('install', (event) => {

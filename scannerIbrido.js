@@ -2,9 +2,8 @@ function caricaScript(url) {
   return new Promise((resolve, reject) => {
     const script = document.createElement('script');
     script.src = url;
-    script.crossOrigin = 'anonymous';
     script.onload = () => resolve(window.Tesseract);
-    script.onerror = () => reject(new Error('Errore caricamento: ' + url));
+    script.onerror = () => reject(new Error('Errore caricamento locale: ' + url));
     document.head.appendChild(script);
   });
 }
@@ -13,20 +12,12 @@ async function assicuraTesseract() {
   if (typeof window.Tesseract !== 'undefined') {
     return window.Tesseract;
   }
-
-  const urls = [
-    'https://jsdelivr.net',
-    'https://unpkg.com'
-  ];
-
-  for (const url of urls) {
-    try {
-      return await caricaScript(url);
-    } catch (e) {
-      console.warn(e.message);
-    }
+  try {
+    return await caricaScript('./tesseract/tesseract.min.js');
+  } catch (e) {
+    console.error(e);
+    throw new Error("Impossibile caricare Tesseract locale. Verifica la cartella /tesseract.");
   }
-  throw new Error("Impossibile scaricare Tesseract. Controlla la rete o inserisci la Gemini API Key.");
 }
 
 async function elaboraDistinta(canvasElement, apiKey, onStatusUpdate) {
@@ -52,7 +43,10 @@ async function elaboraDistinta(canvasElement, apiKey, onStatusUpdate) {
  */
 async function estraiConGemini(canvasElement, apiKey) {
   const base64Image = canvasElement.toDataURL('image/jpeg', 0.85).split(',')[1];
-  const url = `https://googleapis.com{encodeURIComponent(apiKey)}`;
+  const proto = 'ht' + 'tps://';
+  const host = 'generativelanguage.googleapis.' + 'com';
+  const path = '/v1beta/models/gemini-2.5-flash:generateContent?key=';
+  const url = proto + host + path + encodeURIComponent(apiKey);
 
   const responseSchema = {
     type: "ARRAY",
@@ -98,24 +92,27 @@ async function estraiConGemini(canvasElement, apiKey) {
 }
 
 /**
- * Estrazione Offline con Tesseract.js
+ * Estrazione Offline con Tesseract.js locale
  */
 async function estraiConTesseractOffline(canvasElement, onStatusUpdate) {
-  onStatusUpdate("Caricamento motore OCR offline...");
+  onStatusUpdate("Caricamento motore OCR locale...");
   const TesseractLib = await assicuraTesseract();
   const canvasOttimizzato = miglioraContrasto(canvasElement);
 
-  const { data: { text } } = await TesseractLib.recognize(
-    canvasOttimizzato,
-    'ita',
-    {
-      logger: m => {
-        if (m.status === 'recognizing text') {
-          onStatusUpdate(`Lettura offline: ${Math.round(m.progress * 100)}%`);
-        }
+  const worker = await TesseractLib.createWorker('ita', 1, {
+    workerPath: './tesseract/worker.min.js',
+    corePath: './tesseract/tesseract-core.wasm.js',
+    langPath: './tesseract',
+    gzip: false,
+    logger: m => {
+      if (m.status === 'recognizing text') {
+        onStatusUpdate(`Lettura offline: ${Math.round(m.progress * 100)}%`);
       }
     }
-  );
+  });
+
+  const { data: { text } } = await worker.recognize(canvasOttimizzato);
+  await worker.terminate();
 
   return analizzaTestoModB(text);
 }
