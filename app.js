@@ -30,6 +30,74 @@ const btnForzaJson = document.getElementById('btnForzaJson');
 
 let datiTemporanei = [];
 let fonteTemporanea = '';
+// Schema standard Mod. B FIR dall'alto verso il basso (15 -> 1 + Riserve)
+const SCHEMA_MOD_B_TITOLARI = [
+  { maglia: '15', ruolo: 'E' },
+  { maglia: '14', ruolo: 'AD' },
+  { maglia: '13', ruolo: 'CD' },
+  { maglia: '12', ruolo: 'CS' },
+  { maglia: '11', ruolo: 'AS' },
+  { maglia: '10', ruolo: 'MA' },
+  { maglia: '9',  ruolo: 'MM' },
+  { maglia: '8',  ruolo: '3C' },
+  { maglia: '7',  ruolo: '3D' },
+  { maglia: '6',  ruolo: '3S' },
+  { maglia: '5',  ruolo: '2D' },
+  { maglia: '4',  ruolo: '2S' },
+  { maglia: '3',  ruolo: 'PD' },
+  { maglia: '2',  ruolo: 'T' },
+  { maglia: '1',  ruolo: 'PS' }
+];
+
+function creaListaPrecompilata() {
+  const numTit = parseInt(rangeRigheTit.value, 10) || 15;
+  const numRis = parseInt(rangeRigheRis.value, 10) || 7;
+  const lista = [];
+
+  for (let i = 0; i < numTit; i++) {
+    const base = SCHEMA_MOD_B_TITOLARI[i] || { maglia: String(15 - i), ruolo: '' };
+    lista.push({ maglia: base.maglia, ruolo: base.ruolo, cognome_nome: '' });
+  }
+
+  for (let r = 0; r < numRis; r++) {
+    lista.push({ maglia: String(16 + r), ruolo: 'RI', cognome_nome: '' });
+  }
+
+  return lista;
+}
+
+function unisciConPrecompilata(datiEstratti) {
+  const lista = creaListaPrecompilata();
+
+  datiEstratti.forEach((estr, idx) => {
+    const numMaglia = String(estr.maglia || '').trim();
+    // Cerca la riga con lo stesso numero di maglia; se non la trova, usa la posizione
+    let target = lista.find(r => r.maglia === numMaglia && !r.cognome_nome);
+    if (!target && idx < lista.length) {
+      target = lista[idx];
+    }
+
+    if (target) {
+      if (numMaglia) target.maglia = numMaglia;
+      if (estr.ruolo && !target.ruolo) target.ruolo = estr.ruolo.trim().toUpperCase();
+      if (estr.cognome_nome) target.cognome_nome = estr.cognome_nome.trim().toUpperCase();
+    } else {
+      lista.push({
+        maglia: numMaglia,
+        ruolo: String(estr.ruolo || '').trim().toUpperCase(),
+        cognome_nome: String(estr.cognome_nome || '').trim().toUpperCase()
+      });
+    }
+  });
+
+  return lista;
+}
+
+// Precompila subito la lista all'avvio così anche "Modifica Lista" è già pronta
+datiTemporanei = creaListaPrecompilata();
+
+
+
 
 btnToggleGrid.addEventListener('click', () => {
   gridSettings.style.display = gridSettings.style.display === 'block' ? 'none' : 'block';
@@ -246,6 +314,7 @@ function finalizzaOutputJson(dati, fonte) {
   btnCopia.style.display = 'block';
 }
 
+/*
 btnScatta.addEventListener('click', async () => {
   btnScatta.disabled = true;
   btnModificaLista.style.display = 'none';
@@ -288,6 +357,7 @@ btnScatta.addEventListener('click', async () => {
     btnScatta.disabled = false;
   }
 });
+*/
 
 btnCopia.addEventListener('click', async () => {
   try {
@@ -351,7 +421,7 @@ const btnFotoNativa = document.getElementById('btnFotoNativa');
 
 if (btnFotoNativa && inputFotoNativa) {
   btnFotoNativa.addEventListener('click', () => inputFotoNativa.click());
-
+/*
   inputFotoNativa.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -384,6 +454,76 @@ if (btnFotoNativa && inputFotoNativa) {
     };
     img.src = URL.createObjectURL(file);
   });
+  */
+  async function eseguiScansioneDaCanvas() {
+  try {
+    const apiKey = apiKeyInput.value.trim();
+    const risultato = await elaboraDistinta(canvas, apiKey, (msg) => {
+      stato.innerText = msg;
+    });
+
+    datiTemporanei = unisciConPrecompilata(risultato.dati);
+    fonteTemporanea = risultato.fonte;
+
+    const duplicati = trovaMaglieDuplicate(datiTemporanei);
+    // Apre SEMPRE il pop-up di verifica dopo lo scatto
+    apriEditorLista(datiTemporanei, duplicati);
+    stato.innerText = "Controlla i nominativi nel pop-up e premi Conferma.";
+  } catch (err) {
+    // Anche in caso di errore OCR, apre la lista precompilata per non bloccarti
+    datiTemporanei = creaListaPrecompilata();
+    apriEditorLista(datiTemporanei, []);
+    stato.innerText = "OCR non riuscito (" + err.message + "): compila manualmente.";
+  }
+}
+
+btnScatta.addEventListener('click', async () => {
+  btnScatta.disabled = true;
+  btnModificaLista.style.display = 'none';
+  btnCopia.style.display = 'none';
+  badgeContainer.innerHTML = '';
+
+  const videoRect = video.getBoundingClientRect();
+  const mirinoRect = mirino.getBoundingClientRect();
+  const scaleX = video.videoWidth / videoRect.width;
+  const scaleY = video.videoHeight / videoRect.height;
+
+  const cropX = (mirinoRect.left - videoRect.left) * scaleX;
+  const cropY = (mirinoRect.top - videoRect.top) * scaleY;
+  const cropWidth = mirinoRect.width * scaleX;
+  const cropHeight = mirinoRect.height * scaleY;
+
+  canvas.width = cropWidth;
+  canvas.height = cropHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+
+  await eseguiScansioneDaCanvas();
+  btnScatta.disabled = false;
+});
+
+if (btnFotoNativa && inputFotoNativa) {
+  btnFotoNativa.addEventListener('click', () => inputFotoNativa.click());
+
+  inputFotoNativa.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const img = new Image();
+    img.onload = async () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+
+      stato.innerText = "Elaborazione foto acquisita...";
+      await eseguiScansioneDaCanvas();
+    };
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+  
 }
 
 
