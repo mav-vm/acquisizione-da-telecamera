@@ -384,6 +384,13 @@ function avviaCameraConTimeout(vincoli, ms = 4000) {
 }
 
 async function avviaCameraSicura() {
+  // Evita di riavviare la camera live se siamo appena rientrati da un tentativo di scatto nativo
+  if (sessionStorage.getItem('usa_nativa') === '1') {
+    sessionStorage.removeItem('usa_nativa');
+    stato.innerText = "Se il browser ha ricaricato la pagina, usa 'Scegli da Galleria' per la foto appena scattata.";
+    return;
+  }
+
   stato.innerText = "Richiesta accesso fotocamera...";
   if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
     stato.innerText = "Usa Fotocamera Nativa o Scegli da Galleria.";
@@ -391,7 +398,7 @@ async function avviaCameraSicura() {
   }
   try {
     const stream = await avviaCameraConTimeout({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
       audio: false
     }, 4000);
     video.srcObject = stream;
@@ -412,9 +419,10 @@ async function avviaCameraSicura() {
 }
 avviaCameraSicura();
 
-// MODIFICA 3: Caricamento immagine con FileReader per evitare crash al rientro dalla camera
+// MODIFICA 3: Caricamento immagine con FileReader e indice [0] corretto
 function gestisciFileImmagine(file) {
   if (!file) return;
+  sessionStorage.removeItem('usa_nativa');
   btnCopia.style.display = 'none';
   badgeContainer.innerHTML = '';
   stato.innerText = "Caricamento immagine selezionata...";
@@ -441,12 +449,13 @@ function gestisciFileImmagine(file) {
   reader.readAsDataURL(file);
 }
 
-// Pulsante 1: Fotocamera Nativa (spegne prima la camera live)
+// Pulsante 1: Fotocamera Nativa
 const btnFotoNativa = document.getElementById('btnFotoNativa');
 const inputFotoNativa = document.getElementById('inputFotoNativa');
 if (btnFotoNativa && inputFotoNativa) {
   btnFotoNativa.addEventListener('click', () => {
     fermaCameraLive();
+    sessionStorage.setItem('usa_nativa', '1');
     inputFotoNativa.value = '';
     inputFotoNativa.click();
   });
@@ -457,7 +466,7 @@ if (btnFotoNativa && inputFotoNativa) {
   });
 }
 
-// Pulsante 2: Scegli da Galleria (spegne prima la camera live)
+// Pulsante 2: Scegli da Galleria
 const btnGalleria = document.getElementById('btnGalleria');
 const inputGalleria = document.getElementById('inputGalleria');
 if (btnGalleria && inputGalleria) {
