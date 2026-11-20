@@ -44,6 +44,7 @@ async function elaboraDistinta(canvasElement, apiKey, onStatusUpdate) {
 }
 
 // Chiede direttamente a Google quali modelli sono attivi sulla tua chiave API
+// Chiede direttamente a Google quali modelli FLASH veloci sono attivi sulla tua chiave API
 async function ottieniModelliDisponibili(apiKey) {
   const urlLista = 'https://googleapis.com' + encodeURIComponent(apiKey);
   const res = await fetch(urlLista);
@@ -54,36 +55,50 @@ async function ottieniModelliDisponibili(apiKey) {
   const data = await res.json();
   const tutti = data.models || [];
 
-  // Filtra solo i modelli Gemini che supportano generateContent (esclude embedding, imagen, ecc.)
+  // Filtra solo i modelli Gemini FLASH veloci (esclude pro/thinking troppo lenti per mobile)
   const validi = tutti
-    .filter(m => m.name && m.name.includes('gemini') && Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+    .filter(m => {
+      if (!m.name || !Array.isArray(m.supportedGenerationMethods) || !m.supportedGenerationMethods.includes('generateContent')) return false;
+      const n = m.name.toLowerCase();
+      return n.includes('gemini') && n.includes('flash') && !n.includes('image') && !n.includes('tts') && !n.includes('audio');
+    })
     .map(m => m.name.replace('models/', ''));
 
-  // Dai priorità ai modelli Flash/Pro più recenti
+  // Ordina mettendo prima i modelli più recenti (es. 3.8, 3.5, 3, ecc.) e prima i flash standard rispetto ai lite
   validi.sort((a, b) => {
     const score = (nome) => {
       let s = 0;
-      if (nome.includes('flash')) s += 10;
-      if (nome.includes('pro')) s += 5;
-      if (nome.includes('lite')) s -= 2;
-      if (nome.includes('exp') || nome.includes('preview')) s -= 1;
+      if (nome.includes('3.8') || nome.includes('4')) s += 30;
+      else if (nome.includes('3.5') || nome.includes('3')) s += 20;
+      if (nome.includes('lite')) s -= 5;
+      if (nome.includes('preview') || nome.includes('exp')) s -= 2;
       return s;
     };
     return score(b) - score(a);
   });
 
   if (validi.length === 0) {
-    throw new Error("Nessun modello Gemini attivo trovato su questa chiave API.");
+    throw new Error("Nessun modello Gemini Flash trovato su questa chiave API.");
   }
   return validi;
 }
 
 async function estraiConGemini(canvasElement, apiKey, onStatusUpdate) {
-  // Alta qualità (0.85) per leggere perfettamente anche le correzioni a penna
-  const dataUrl = canvasElement.toDataURL('image/jpeg', 0.85);
+  // Ridimensiona a max 1280px con qualità 0.75: nitidissimo ma velocissimo da caricare in 4G
+  const maxLato = 1280;
+  let canvasInvio = canvasElement;
+  if (Math.max(canvasElement.width, canvasElement.height) > maxLato) {
+    const scala = maxLato / Math.max(canvasElement.width, canvasElement.height);
+    canvasInvio = document.createElement('canvas');
+    canvasInvio.width = Math.round(canvasElement.width * scala);
+    canvasInvio.height = Math.round(canvasElement.height * scala);
+    canvasInvio.getContext('2d').drawImage(canvasElement, 0, 0, canvasInvio.width, canvasInvio.height);
+  }
+
+  const dataUrl = canvasInvio.toDataURL('image/jpeg', 0.75);
   const base64Image = dataUrl.substring(dataUrl.indexOf(',') + 1);
 
-  if (onStatusUpdate) onStatusUpdate("Verifica modelli Gemini attivi...");
+  if (onStatusUpdate) onStatusUpdate("Verifica modelli Gemini Flash...");
   const modelliAttivi = await ottieniModelliDisponibili(apiKey);
 
   const promptTesto = `
@@ -128,18 +143,18 @@ Restituisci esclusivamente un array JSON valido.
     generationConfig: {
       response_mime_type: "application/json",
       response_schema: responseSchema,
-      temperature: 0.1
+      temperature: 0.1,
+      thinkingConfig: { thinkingBudget: 0 }
     }
   };
 
   let ultimoErrore = null;
 
-  // Prova in automatico i primi 4 modelli disponibili finché uno risponde con successo
-  for (const modello of modelliAttivi.slice(0, 4)) {
-    if (onStatusUpdate) onStatusUpdate("Analisi con " + modello + "...");
+  for (const modello of modelliAttivi.slice(0, 3)) {
+    if (onStatusUpdate) onStatusUpdate("Analisi rapida con " + modello + "...");
     const url = 'https://googleapis.com' + modello + ':generateContent?key=' + encodeURIComponent(apiKey);
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
 
     try {
       const response = await fetch(url, {
@@ -173,23 +188,42 @@ Restituisci esclusivamente un array JSON valido.
     }
   }
 
-  throw ultimoErrore || new Error("Nessun modello Gemini ha risposto.");
+  throw ultimoErrore || new Error("Nessun modello Gemini Flash ha risposto.");
 }
 
-function miglioraContrasto(sourceCanvas) {
+function preparaStrisciaOCR(sourceCanvas, xPct, wPct) {
+  // Aggiunge un margine interno del 3% per tagliare via i bordi verticali neri della tabella
+  const margine = wPct * 0.04;
+  const sx = Math.max(0, Math.round(sourceCanvas.width * (xPct + margine)));
+  const sw = Math.max(10, Math.round(sourceCanvas.width * (wPct - margine * 2)));
+  const sh = sourceCanvas.height;
+
+  // Ingrandisce 1.5x per aiutare Tesseract sui caratteri piccoli
+  const scala = 1.5;
   const tempCanvas = document.createElement('canvas');
-  tempCanvas.width = sourceCanvas.width;
-  tempCanvas.height = sourceCanvas.height;
+  tempCanvas.width = Math.round(sw * scala);
+  tempCanvas.height = Math.round(sh * scala);
+
   const ctx = tempCanvas.getContext('2d');
-  ctx.filter = 'grayscale(100%) contrast(165%) brightness(115%)';
-  ctx.drawImage(sourceCanvas, 0, 0);
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+  ctx.filter = 'grayscale(100%) contrast(180%) brightness(115%)';
+  ctx.drawImage(sourceCanvas, sx, 0, sw, sh, 0, 0, tempCanvas.width, tempCanvas.height);
   return tempCanvas;
 }
 
 async function estraiConTesseractOffline(canvasElement, onStatusUpdate) {
-  onStatusUpdate("Caricamento motore OCR locale...");
+  onStatusUpdate("Avvio OCR a colonne isolate...");
   const TesseractLib = await assicuraTesseract();
-  const canvasOttimizzato = miglioraContrasto(canvasElement);
+
+  // Legge le percentuali configurate negli slider dall'utente
+  const colMagliaPct = (parseInt(document.getElementById('rangeColMaglia')?.value, 10) || 12) / 100;
+  const colRuoloPct = (parseInt(document.getElementById('rangeColRuolo')?.value, 10) || 9) / 100;
+  const colNomeStart = colMagliaPct + colRuoloPct;
+  const colNomeWidth = 1 - colNomeStart;
+
+  const canvasNomi = preparaStrisciaOCR(canvasElement, colNomeStart, colNomeWidth);
+  const canvasMaglie = preparaStrisciaOCR(canvasElement, 0, colMagliaPct);
 
   const worker = await TesseractLib.createWorker('ita', 1, {
     workerPath: './tesseract/worker.min.js',
@@ -198,44 +232,66 @@ async function estraiConTesseractOffline(canvasElement, onStatusUpdate) {
     gzip: false,
     logger: m => {
       if (m.status === 'recognizing text') {
-        onStatusUpdate(`Lettura OCR: ${Math.round(m.progress * 100)}%`);
+        onStatusUpdate(`Lettura OCR colonne: ${Math.round(m.progress * 100)}%`);
       }
     }
   });
 
-  await worker.setParameters({ tessedit_pageseg_mode: '6' });
-  const { data: { text } } = await worker.recognize(canvasOttimizzato);
+  // 1. Legge SOLO la colonna Cognome e Nome (con whitelist caratteri)
+  await worker.setParameters({
+    tessedit_pageseg_mode: '6',
+    tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZÀÈÉÌÒÙ'.,()- "
+  });
+  const resNomi = await worker.recognize(canvasNomi);
+
+  // 2. Legge SOLO la colonna Numeri di Maglia
+  await worker.setParameters({
+    tessedit_pageseg_mode: '6',
+    tessedit_char_whitelist: "0123456789"
+  });
+  const resMaglie = await worker.recognize(canvasMaglie);
+
   await worker.terminate();
 
-  return analizzaRigheIntereModB(text);
+  return combinaColonneModB(resMaglie.data.text, resNomi.data.text);
 }
 
-function analizzaRigheIntereModB(testoGrezzo) {
-  const righe = testoGrezzo.split('\n');
+function combinaColonneModB(testoMaglie, testoNomi) {
+  const righeNomi = testoNomi.split('\n')
+    .map(r => r.toUpperCase()
+      .replace(/^[IL|1]\s+/, '') // Rimuove residui di bordo sinistro scambiati per I o L
+      .replace(/\s+[IL|1]$/, '') // Rimuove residui di bordo destro
+      .replace(/\s+/g, ' ')
+      .trim()
+    )
+    .filter(r => {
+      if (r.length < 4) return false;
+      // Scarta intestazioni e righe separatrici del Mod. B
+      if (r.includes('COGNOME') || r.includes('PANCHINA') || r.includes('GIOCATORI') || r.includes('SOSTITUZIONI') || r.includes('ALLENATORE')) return false;
+      return true;
+    });
+
+  const numeriMaglia = testoMaglie.split('\n')
+    .map(r => r.replace(/\D/g, '').trim())
+    .filter(n => n.length >= 1 && n.length <= 2);
+
+  // Usa lo schema ruoli fisso del Mod. B (15->E ... 1->PS, poi RI)
+  const ruoliFissi = ['E', 'AD', 'CS', 'CD', 'AS', 'MA', 'MM', '3C', '3S', '3D', '2S', '2D', 'PD', 'T', 'PS'];
+  const maglieFisse = ['15', '14', '13', '12', '11', '10', '9', '8', '7', '6', '5', '4', '3', '2', '1'];
+
   const giocatori = [];
-  const ruoliValidi = ['E', 'AD', 'CS', 'CD', 'AS', 'MA', 'MM', '3C', '3S', '3D', '2S', '2D', 'PD', 'T', 'PS', 'RI'];
+  righeNomi.forEach((nome, idx) => {
+    const isTitolare = idx < 15;
+    const magliaDefault = isTitolare ? maglieFisse.at(idx) : String(16 + (idx - 15));
+    const magliaLetta = numeriMaglia.at(idx);
 
-  for (const riga of righe) {
-    const upper = riga.toUpperCase().trim();
-    if (!upper || upper.includes('PANCHINA') || upper.includes('COGNOME') || upper.includes('ALLENATORE')) continue;
+    giocatori.push({
+      maglia: magliaLetta || magliaDefault,
+      ruolo: isTitolare ? ruoliFissi.at(idx) : 'RI',
+      cognome_nome: nome
+    });
+  });
 
-    const match = upper.match(/(?:^|\b)(\d{1,2})?\s*\|?\s*(E|AD|CS|CD|AS|MA|MM|3C|3S|3D|2S|2D|PD|T|PS|RI)\s*\|?\s*([A-ZÀ-Ü'.,\s()-]{5,})/);
-    if (match && ruoliValidi.includes(match.at(2))) {
-      const nomePulito = match.at(3)
-        .split(/\b\d{5,}\b|\b\d{2}\/\d{2}\/\d{4}\b|\bC\.?I\.?\b|\bPASS\.?\b|\bPAT\.?\b/)
-        .at(0)
-        .replace(/[^A-ZÀ-Ü',().\s-]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-      if (nomePulito.length >= 4) {
-        giocatori.push({
-          maglia: match.at(1) ? match.at(1).trim() : '',
-          ruolo: match.at(2).trim(),
-          cognome_nome: nomePulito
-        });
-      }
-    }
-  }
   return giocatori;
 }
+

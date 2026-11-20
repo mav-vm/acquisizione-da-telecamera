@@ -122,16 +122,33 @@ function aggiornaGriglia() {
   document.getElementById('valColRuolo').innerText = colRuoloPct + '%';
   document.getElementById('valAltezza').innerText = zoomMirino + '%';
 
-  mirino.style.width = zoomMirino + '%';
-  mirino.style.height = 'auto';
-  mirino.style.aspectRatio = '210 / 297';
-  mirino.style.maxHeight = '95%';
+  // Calcola dimensioni esatte A4 (210x297) dentro il contenitore senza mai deformarlo
+  const wrapper = mirino.parentElement;
+  const maxW = wrapper.clientWidth * (zoomMirino / 100);
+  const maxH = wrapper.clientHeight * 0.92;
+  const ratioA4 = 210 / 297;
+
+  let finalW = maxW;
+  let finalH = finalW / ratioA4;
+  if (finalH > maxH) {
+    finalH = maxH;
+    finalW = finalH * ratioA4;
+  }
+
+  mirino.style.width = Math.round(finalW) + 'px';
+  mirino.style.height = Math.round(finalH) + 'px';
 
   const totaleRighe = righeTit + 2 + (righeRis > 0 ? righeRis + 1 : 0);
-  const altezzaTabellaPct = Math.min(85, (totaleRighe * 1.82)).toFixed(1);
+  const altezzaTabellaPct = Math.min(86, (totaleRighe * 1.82)).toFixed(1);
+
+  // Genera le righe guida orizzontali per allineare facilmente il foglio
+  let righeHtml = '';
+  for (let i = 0; i < totaleRighe; i++) {
+    righeHtml += `<div style="border-bottom: 1px solid rgba(59, 130, 246, 0.35); width: 100%; height: 100%;"></div>`;
+  }
 
   mirino.innerHTML = `
-    <span class="mirino-label">ALLINEA IL FOGLIO A4 AL BORDO VERDE</span>
+    <span class="mirino-label">ALLINEA I BORDI DEL FOGLIO A4 AL VERDE</span>
     <div id="boxTabella" style="
       position: absolute;
       left: ${PDF_CALIBRATION.tableLeft * 100}%;
@@ -139,13 +156,13 @@ function aggiornaGriglia() {
       width: ${PDF_CALIBRATION.tableWidth * 100}%;
       height: ${altezzaTabellaPct}%;
       border: 2px solid #3b82f6;
-      background: rgba(59, 130, 246, 0.14);
+      background: rgba(59, 130, 246, 0.08);
       display: grid;
       grid-template-columns: ${colMagliaPct}% ${colRuoloPct}% 1fr;
     ">
-      <div style="border-right: 1px dashed #a855f7; background: rgba(168,85,247,0.12);"></div>
-      <div style="border-right: 1px dashed #ef4444; background: rgba(239,68,68,0.12);"></div>
-      <div></div>
+      <div style="border-right: 1px dashed #a855f7; background: rgba(168,85,247,0.10);"></div>
+      <div style="border-right: 1px dashed #ef4444; background: rgba(239,68,68,0.10);"></div>
+      <div style="display: grid; grid-template-rows: repeat(${totaleRighe}, 1fr);">${righeHtml}</div>
     </div>
   `;
 
@@ -153,6 +170,8 @@ function aggiornaGriglia() {
     righeTit, righeRis, colMaglia: colMagliaPct, colRuolo: colRuoloPct, altezza: zoomMirino
   }));
 }
+window.addEventListener('resize', aggiornaGriglia);
+
 
 const savedPrefs = JSON.parse(localStorage.getItem('grid_prefs_modb') || 'null');
 if (savedPrefs) {
@@ -434,17 +453,30 @@ function gestisciFileImmagine(file) {
   sessionStorage.removeItem('usa_nativa');
   btnCopia.style.display = 'none';
   badgeContainer.innerHTML = '';
-  stato.innerText = "Caricamento immagine selezionata...";
+  stato.innerText = "Caricamento e ritaglio immagine...";
 
   const reader = new FileReader();
   reader.onload = (event) => {
     const img = new Image();
     img.onload = async () => {
-      const maxDim = 1600;
-      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-      canvas.width = Math.round(img.width * scale);
-      canvas.height = Math.round(img.height * scale);
-      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      const righeTit = parseInt(rangeRigheTit.value, 10) || 15;
+      const righeRis = parseInt(rangeRigheRis.value, 10) || 7;
+      const totaleRighe = righeTit + 2 + (righeRis > 0 ? righeRis + 1 : 0);
+      const altezzaTabellaPct = Math.min(0.86, (totaleRighe * 1.82) / 100);
+
+      // Se l'immagine è verticale (foglio A4 intero), ritaglia direttamente la tabella
+      const isVerticale = img.height > img.width * 1.15;
+      const sx = isVerticale ? Math.round(img.width * PDF_CALIBRATION.tableLeft) : 0;
+      const sy = isVerticale ? Math.round(img.height * PDF_CALIBRATION.tableTop) : 0;
+      const sw = isVerticale ? Math.round(img.width * PDF_CALIBRATION.tableWidth) : img.width;
+      const sh = isVerticale ? Math.round(img.height * altezzaTabellaPct) : img.height;
+
+      const maxDim = 1400;
+      const scale = Math.min(1, maxDim / Math.max(sw, sh));
+      canvas.width = Math.round(sw * scale);
+      canvas.height = Math.round(sh * scale);
+
+      canvas.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
       await eseguiScansioneDaCanvas();
     };
     img.onerror = () => {
@@ -457,6 +489,7 @@ function gestisciFileImmagine(file) {
   };
   reader.readAsDataURL(file);
 }
+
 
 // Pulsante 1: Fotocamera Nativa
 const btnFotoNativa = document.getElementById('btnFotoNativa');
