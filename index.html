@@ -85,17 +85,16 @@
 </head>
 <body>
 	
-	<script src="version.js"></script>
-	<script>
-  // Legge la variabile dal file version.js e la inserisce nell'HTML
-  document.getElementById('app-version').textContent = 'v' + APP_VERSION;
-</script>
-	
-	
   <header>
     <h1>Scanner Distinta Mod. B <span id="app-version" style="font-size: 0.65em; color: #A9A9A9; font-weight: normal;"></span></h1>
     <button type="button" id="btnToggleGrid" class="secondary">Regola Griglia / API</button>
   </header>
+  
+  <script src="version.js"></script>
+	<script>
+  // Legge la variabile dal file version.js e la inserisce nell'HTML
+  document.getElementById('app-version').textContent = 'v' + APP_VERSION;
+	</script>
 
   <div id="gridSettings">
     <div class="setting-row">
@@ -170,8 +169,19 @@
   <script src="app.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js').catch(console.error);
+      navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+        .then((reg) => reg.update())
+        .catch(console.error);
+
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!refreshing) {
+          refreshing = true;
+          window.location.reload();
+        }
+      });
     }
   </script>
 </body>
 </html>
+ 

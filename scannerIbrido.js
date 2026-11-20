@@ -45,9 +45,11 @@ async function elaboraDistinta(canvasElement, apiKey, onStatusUpdate) {
 }
 
 async function estraiConGemini(canvasElement, apiKey) {
-  // Riduciamo leggermente il peso JPEG (0.65) per velocizzare l'upload su rete mobile
-  const base64Image = canvasElement.toDataURL('image/jpeg', 0.65).split(',');
-  const url = 'https://googleapis.com';
+  const dataUrl = canvasElement.toDataURL('image/jpeg', 0.65);
+  const base64Image = dataUrl.substring(dataUrl.indexOf(',') + 1);
+  const proto = 'ht' + 'tps://';
+  const host = 'generativelanguage.googleapis.' + 'com';
+  const url = proto + host + '/v1beta/models/gemini-2.5-flash:generateContent';
 
   const promptTesto = `
 Analizza questa immagine di una distinta di gara della Federazione Italiana Rugby (Mod. B).
@@ -121,19 +123,21 @@ Restituisci esclusivamente un array JSON valido.
 
   if (!response.ok) {
     const errData = await response.json().catch(() => ({}));
-    const dettagli = errData.error?.message || ("HTTP " + response.status);
+    const dettagli = errData.error && errData.error.message ? errData.error.message : ("HTTP " + response.status);
     throw new Error(dettagli);
   }
 
   const data = await response.json();
-  const testoRisposta = data.candidates?.?.content?.parts?.?.text;
+  const candidate = data.candidates && data.candidates;
+  const part = candidate && candidate.content && candidate.content.parts && candidate.content.parts;
+  const testoRisposta = part && part.text;
+
   if (!testoRisposta) {
     throw new Error("Risposta vuota da Gemini");
   }
 
   return JSON.parse(testoRisposta);
 }
-
 
 function miglioraContrasto(sourceCanvas) {
   const tempCanvas = document.createElement('canvas');
@@ -179,17 +183,17 @@ function analizzaRigheIntereModB(testoGrezzo) {
     if (!upper || upper.includes('PANCHINA') || upper.includes('COGNOME') || upper.includes('ALLENATORE')) continue;
 
     const match = upper.match(/(?:^|\b)(\d{1,2})?\s*\|?\s*(E|AD|CS|CD|AS|MA|MM|3C|3S|3D|2S|2D|PD|T|PS|RI)\s*\|?\s*([A-ZÀ-Ü'.,\s()-]{5,})/);
-    if (match && ruoliValidi.includes(match[2])) {
-      const nomePulito = match[3]
-        .split(/\b\d{5,}\b|\b\d{2}\/\d{2}\/\d{4}\b|\bC\.?I\.?\b|\bPASS\.?\b|\bPAT\.?\b/)[0]
+    if (match && ruoliValidi.includes(match)) {
+      const nomePulito = match
+        .split(/\b\d{5,}\b|\b\d{2}\/\d{2}\/\d{4}\b|\bC\.?I\.?\b|\bPASS\.?\b|\bPAT\.?\b/)
         .replace(/[^A-ZÀ-Ü',().\s-]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
 
       if (nomePulito.length >= 4) {
         giocatori.push({
-          maglia: match[1] ? match[1].trim() : '',
-          ruolo: match[2].trim(),
+          maglia: match ? match.trim() : '',
+          ruolo: match.trim(),
           cognome_nome: nomePulito
         });
       }
