@@ -66,7 +66,7 @@ function creaListaPrecompilata() {
   const lista = [];
 
   for (let i = 0; i < numTit; i++) {
-    const base = SCHEMA_MOD_B_TITOLARI[i] || { maglia: String(15 - i), ruolo: '' };
+    const base = SCHEMA_MOD_B_TITOLARI.at(i) || { maglia: String(15 - i), ruolo: '' };
     lista.push({ maglia: base.maglia, ruolo: base.ruolo, cognome_nome: '' });
   }
   for (let r = 0; r < numRis; r++) {
@@ -91,8 +91,8 @@ function unisciConPrecompilata(datiEstratti) {
     const ruolo = String(estr.ruolo || '').trim().toUpperCase();
 
     if (idx < lista.length && ruolo !== 'ALL') {
-      if (numMaglia) lista[idx].maglia = numMaglia;
-      if (nome) lista[idx].cognome_nome = nome;
+      if (numMaglia) lista.at(idx).maglia = numMaglia;
+      if (nome) lista.at(idx).cognome_nome = nome;
     } else if (numMaglia || nome) {
       lista.push({
         maglia: numMaglia,
@@ -104,7 +104,6 @@ function unisciConPrecompilata(datiEstratti) {
 
   return lista;
 }
-
 
 btnToggleGrid.addEventListener('click', () => {
   gridSettings.style.display = gridSettings.style.display === 'block' ? 'none' : 'block';
@@ -123,7 +122,6 @@ function aggiornaGriglia() {
   document.getElementById('valColRuolo').innerText = colRuoloPct + '%';
   document.getElementById('valAltezza').innerText = zoomMirino + '%';
 
-  // Calcola dimensioni esatte A4 (210x297) dentro il contenitore senza mai deformarlo
   const wrapper = mirino.parentElement;
   const maxW = wrapper.clientWidth * (zoomMirino / 100);
   const maxH = wrapper.clientHeight * 0.92;
@@ -142,7 +140,6 @@ function aggiornaGriglia() {
   const totaleRighe = righeTit + 2 + (righeRis > 0 ? righeRis + 1 : 0);
   const altezzaTabellaPct = Math.min(86, (totaleRighe * 1.82)).toFixed(1);
 
-  // Genera le righe guida orizzontali per allineare facilmente il foglio
   let righeHtml = '';
   for (let i = 0; i < totaleRighe; i++) {
     righeHtml += `<div style="border-bottom: 1px solid rgba(59, 130, 246, 0.35); width: 100%; height: 100%;"></div>`;
@@ -173,7 +170,6 @@ function aggiornaGriglia() {
 }
 window.addEventListener('resize', aggiornaGriglia);
 
-
 const savedPrefs = JSON.parse(localStorage.getItem('grid_prefs_modb') || 'null');
 if (savedPrefs) {
   rangeRigheTit.value = savedPrefs.righeTit ?? 15;
@@ -188,7 +184,6 @@ if (savedPrefs) {
 aggiornaGriglia();
 datiTemporanei = creaListaPrecompilata();
 
-// MODIFICA 1: Salvataggio istantaneo della API key durante la digitazione/incolla
 apiKeyInput.value = localStorage.getItem('gemini_api_key') || '';
 apiKeyInput.addEventListener('input', () => {
   localStorage.setItem('gemini_api_key', apiKeyInput.value.trim());
@@ -219,7 +214,7 @@ function creaRigaEditor(g, isDup) {
   row.querySelector('.btn-rimuovi').addEventListener('click', () => row.remove());
   return row;
 }
-
+// --- FINE BLOCCO A ---
 function apriEditorLista(giocatori, duplicati = []) {
   if (duplicati.length > 0) {
     modalBox.classList.add('has-errors');
@@ -239,6 +234,7 @@ function apriEditorLista(giocatori, duplicati = []) {
 
   modalDuplicati.style.display = 'flex';
 }
+
 btnAggiungiRiga.addEventListener('click', () => {
   modalList.appendChild(creaRigaEditor({ maglia: '', ruolo: 'RI', cognome_nome: '' }, false));
   modalList.scrollTop = modalList.scrollHeight;
@@ -277,7 +273,7 @@ btnForzaJson.addEventListener('click', () => {
   datiTemporanei = leggiRigheDaModale();
   modalDuplicati.style.display = 'none';
   finalizzaOutputJson(datiTemporanei, fonteTemporanea);
-  
+
   if (ultimoErroreDebug) {
     outputJson.textContent = "⚠️ DETTAGLIO ERRORE:\n" + ultimoErroreDebug + "\n\n" + outputJson.textContent;
   }
@@ -294,8 +290,7 @@ function finalizzaOutputJson(dati, fonte) {
 
 function catturaMirinoEsatto() {
   const videoRect = video.getBoundingClientRect();
-  const boxTabella = document.getElementById('boxTabella') || mirino;
-  const targetRect = boxTabella.getBoundingClientRect();
+  const targetRect = mirino.getBoundingClientRect();
   const videoRatio = video.videoWidth / video.videoHeight;
   const elemRatio = videoRect.width / videoRect.height;
   let renderWidth, renderHeight, offsetX, offsetY;
@@ -495,22 +490,21 @@ if (btnFotoNativa && inputFotoNativa) {
   });
   inputFotoNativa.addEventListener('change', (e) => {
     if (e.target.files && e.target.files.length > 0) {
-      gestisciFileImmagine(e.target.files.item(0));
-    }
-  });
+    	gestisciFileImmagine(e.target.files.item(0));
+		}
+	});
 }
-
 const btnGalleria = document.getElementById('btnGalleria');
 const inputGalleria = document.getElementById('inputGalleria');
 if (btnGalleria && inputGalleria) {
-  btnGalleria.addEventListener('click', () => {
-    fermaCameraLive();
-    inputGalleria.value = '';
-    inputGalleria.click();
-  });
-  inputGalleria.addEventListener('change', (e) => {
-    if (e.target.files && e.target.files.length > 0) {
-      gestisciFileImmagine(e.target.files.item(0));
-    }
-  });
+btnGalleria.addEventListener('click', () => {
+fermaCameraLive();
+inputGalleria.value = '';
+inputGalleria.click();
+});
+inputGalleria.addEventListener('change', (e) => {
+if (e.target.files && e.target.files.length > 0) {
+gestisciFileImmagine(e.target.files.item(0));
+}
+});
 }
