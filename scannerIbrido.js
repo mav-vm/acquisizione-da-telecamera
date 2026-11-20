@@ -29,9 +29,14 @@ async function elaboraDistinta(canvasElement, apiKey, onStatusUpdate) {
       const giocatori = await estraiConGemini(canvasElement, chiavePulita);
       return { fonte: "GEMINI_CLOUD", dati: giocatori };
     } catch (errore) {
-      console.warn("Fallback su Tesseract offline:", errore);
-      onStatusUpdate("Errore Gemini (" + errore.message + "): passaggio a OCR offline...");
-      await new Promise(r => setTimeout(r, 2500));
+      console.error("Errore Gemini dettagliato:", errore);
+      // Stampa l'errore completo nel box del JSON così puoi leggerlo con calma
+      const boxJson = document.getElementById('outputJson');
+      if (boxJson) {
+        boxJson.textContent = "ERRORE GEMINI:\n" + errore.message;
+      }
+      onStatusUpdate("⚠️ Errore Gemini (leggi dettagli nel riquadro sotto) - Passo a OCR tra 6 secondi...");
+      await new Promise(r => setTimeout(r, 6000));
     }
   } else if (!chiavePulita) {
     onStatusUpdate("API Key mancante: avvio OCR locale Tesseract...");
@@ -43,6 +48,15 @@ async function elaboraDistinta(canvasElement, apiKey, onStatusUpdate) {
   const giocatoriOffline = await estraiConTesseractOffline(canvasElement, onStatusUpdate);
   return { fonte: "TESSERACT_OFFLINE", dati: giocatoriOffline };
 }
+
+
+
+
+
+
+
+
+
 
 async function estraiConGemini(canvasElement, apiKey) {
   const dataUrl = canvasElement.toDataURL('image/jpeg', 0.65);
