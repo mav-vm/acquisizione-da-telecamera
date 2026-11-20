@@ -133,6 +133,13 @@ Regole:
 
   const data = await res.json();
   
+  // DEBUG: mostra nel riquadro nero cosa ha risposto esattamente Gemini 4 Hydrogen
+  const boxJson = document.getElementById('outputJson');
+  if (boxJson) {
+    boxJson.textContent = "RISPOSTA GREZZA GEMINI:\n" + JSON.stringify(data, null, 2);
+  }
+  
+  
   // Estrae il testo dall'ultimo step model_output delle Interactions API
   const steps = data.steps || [];
   let rawText = '';
