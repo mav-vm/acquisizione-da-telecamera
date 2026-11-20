@@ -42,8 +42,7 @@ async function estraiConGemini(canvasElement, apiKey) {
   const base64Image = canvasElement.toDataURL('image/jpeg', 0.85).split(',')[1];
   const proto = 'ht' + 'tps://';
   const host = 'generativelanguage.googleapis.' + 'com';
-  const path = '/v1beta/models/gemini-2.5-flash:generateContent?key=';
-  const url = proto + host + path + encodeURIComponent(apiKey);
+  const url = proto + host + '/v1beta/models/gemini-2.5-flash:generateContent';
 
   const responseSchema = {
     type: "ARRAY",
@@ -51,7 +50,7 @@ async function estraiConGemini(canvasElement, apiKey) {
       type: "OBJECT",
       properties: {
         maglia: { type: "STRING", description: "Numero di maglia definitivo (1-99, se corretto a penna usa quello a penna)" },
-        ruolo: { type: "STRING", description: "Sigla del ruolo (es. E, AD, CD, CS, AS, MA, MM, 3C, 3D, 3S, 2D, 2S, PD, T, PS, RI)" },
+        ruolo: { type: "STRING", description: "Sigla del ruolo (es. E, AD, CS, CD, AS, MA, MM, 3C, 3S, 3D, 2S, 2D, PD, T, PS, RI)" },
         cognome_nome: { type: "STRING", description: "Cognome e Nome del giocatore" }
       },
       required: ["maglia", "ruolo", "cognome_nome"]
@@ -61,7 +60,7 @@ async function estraiConGemini(canvasElement, apiKey) {
   const payload = {
     contents: [{
       parts: [
-        { text: "Estrai dal Mod. B tutti i giocatori dall'alto verso il basso (titolari e riserve sotto 'Giocatori in panchina'). Ignora la riga separatrice 'Giocatori in panchina'. Se un numero di maglia è barrato e riscritto a penna, restituisci il numero scritto a penna." },
+        { text: "Estrai dal Mod. B tutti i giocatori dall'alto verso il basso (titolari e riserve sotto 'Giocatori in panchina'). Ignora la riga separatrice 'Giocatori in panchina' e le righe vuote con puntini. Se un numero di maglia è barrato e riscritto a penna, restituisci il numero scritto a penna." },
         { inline_data: { mime_type: "image/jpeg", data: base64Image } }
       ]
     }],
@@ -73,11 +72,14 @@ async function estraiConGemini(canvasElement, apiKey) {
   };
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 12000);
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
 
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": apiKey.trim()
+    },
     body: JSON.stringify(payload),
     signal: controller.signal
   });
@@ -85,7 +87,7 @@ async function estraiConGemini(canvasElement, apiKey) {
 
   if (!response.ok) throw new Error("HTTP " + response.status);
   const data = await response.json();
-  return JSON.parse(data.candidates.content.parts[0].text);
+  return JSON.parse(data.candidates[0].content.parts[0].text);
 }
 
 function miglioraContrasto(sourceCanvas) {
@@ -93,46 +95,15 @@ function miglioraContrasto(sourceCanvas) {
   tempCanvas.width = sourceCanvas.width;
   tempCanvas.height = sourceCanvas.height;
   const ctx = tempCanvas.getContext('2d');
+  ctx.filter = 'grayscale(100%) contrast(165%) brightness(115%)';
   ctx.drawImage(sourceCanvas, 0, 0);
-
-  const imgData = ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-  const d = imgData.data;
-
-  for (let i = 0; i < d.length; i += 4) {
-    const avg = (d[i] + d[i + 1] + d[i + 2]) / 3;
-    const val = avg > 140 ? 255 : (avg < 80 ? 0 : avg);
-    d[i] = d[i + 1] = d[i + 2] = val;
-  }
-  ctx.putImageData(imgData, 0, 0);
   return tempCanvas;
-}
-
-function ritagliaFascia(sourceCanvas, startPercent, widthPercent) {
-  const temp = document.createElement('canvas');
-  const sx = Math.floor(sourceCanvas.width * startPercent);
-  const sw = Math.floor(sourceCanvas.width * widthPercent);
-  temp.width = Math.max(1, sw);
-  temp.height = sourceCanvas.height;
-  temp.getContext('2d').drawImage(
-    sourceCanvas,
-    sx, 0, sw, sourceCanvas.height,
-    0, 0, sw, sourceCanvas.height
-  );
-  return miglioraContrasto(temp);
 }
 
 async function estraiConTesseractOffline(canvasElement, onStatusUpdate) {
   onStatusUpdate("Caricamento motore OCR locale...");
   const TesseractLib = await assicuraTesseract();
-
-    // Percentuali esatte calibrate sul PDF reale FIR
-  const colMaglia = 0.119;
-  const colRuolo = 0.089;
-
-  const canvasMaglie = ritagliaFascia(canvasElement, 0.005, colMaglia - 0.01);
-  const startNomi = colMaglia + colRuolo + 0.005;
-  const canvasNomi = ritagliaFascia(canvasElement, startNomi, 1 - startNomi - 0.005);
-
+  const canvasOttimizzato = miglioraContrasto(canvasElement);
 
   const worker = await TesseractLib.createWorker('ita', 1, {
     workerPath: './tesseract/worker.min.js',
@@ -146,46 +117,38 @@ async function estraiConTesseractOffline(canvasElement, onStatusUpdate) {
     }
   });
 
-  // 1. Legge SOLO numeri (0-9, inclusi 99) dalla prima colonna
-  await worker.setParameters({
-    tessedit_pageseg_mode: '6',
-    tessedit_char_whitelist: '0123456789'
-  });
-  const resMaglie = await worker.recognize(canvasMaglie);
-
-  // 2. Legge i nominativi dalla terza colonna
-  await worker.setParameters({
-    tessedit_pageseg_mode: '6',
-    tessedit_char_whitelist: ''
-  });
-  const resNomi = await worker.recognize(canvasNomi);
-
+  await worker.setParameters({ tessedit_pageseg_mode: '6' });
+  const { data: { text } } = await worker.recognize(canvasOttimizzato);
   await worker.terminate();
 
-  return combinaMaglieENomi(resMaglie.data.text, resNomi.data.text);
+  return analizzaRigheIntereModB(text);
 }
 
-function combinaMaglieENomi(testoMaglie, testoNomi) {
-  const numEstratti = testoMaglie
-    .split('\n')
-    .map(r => r.replace(/\D/g, '').trim())
-    .filter(n => n.length >= 1 && n.length <= 2);
-
-  const nomiEstratti = testoNomi
-    .split('\n')
-    .map(r => r.toUpperCase().replace(/[^A-ZÀ-Ü'\s.-]/g, ' ').replace(/\s+/g, ' ').trim())
-    .filter(n => n.length >= 4 && !n.includes('PANCHINA') && !n.includes('COGNOME')&& !/^\.+$/.test(n));
-
-  const totaleRighe = Math.max(numEstratti.length, nomiEstratti.length);
+function analizzaRigheIntereModB(testoGrezzo) {
+  const righe = testoGrezzo.split('\n');
   const giocatori = [];
+  const ruoliValidi = ['E', 'AD', 'CS', 'CD', 'AS', 'MA', 'MM', '3C', '3S', '3D', '2S', '2D', 'PD', 'T', 'PS', 'RI'];
 
-  for (let i = 0; i < totaleRighe; i++) {
-    giocatori.push({
-      maglia: numEstratti[i] || '',
-      ruolo: '',
-      cognome_nome: nomiEstratti[i] || ''
-    });
+  for (const riga of righe) {
+    const upper = riga.toUpperCase().trim();
+    if (!upper || upper.includes('PANCHINA') || upper.includes('COGNOME') || upper.includes('ALLENATORE')) continue;
+
+    const match = upper.match(/(?:^|\b)(\d{1,2})?\s*\|?\s*(E|AD|CS|CD|AS|MA|MM|3C|3S|3D|2S|2D|PD|T|PS|RI)\s*\|?\s*([A-ZÀ-Ü'.,\s()-]{5,})/);
+    if (match && ruoliValidi.includes(match[2])) {
+      const nomePulito = match[3]
+        .split(/\b\d{5,}\b|\b\d{2}\/\d{2}\/\d{4}\b|\bC\.?I\.?\b|\bPASS\.?\b|\bPAT\.?\b/)[0]
+        .replace(/[^A-ZÀ-Ü',().\s-]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (nomePulito.length >= 4) {
+        giocatori.push({
+          maglia: match[1] ? match[1].trim() : '',
+          ruolo: match[2].trim(),
+          cognome_nome: nomePulito
+        });
+      }
+    }
   }
-
   return giocatori;
 }

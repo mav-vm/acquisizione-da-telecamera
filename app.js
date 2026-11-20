@@ -17,6 +17,11 @@ const rangeColMaglia = document.getElementById('rangeColMaglia');
 const rangeColRuolo = document.getElementById('rangeColRuolo');
 const rangeAltezza = document.getElementById('rangeAltezza');
 
+const zoomCameraRow = document.getElementById('zoomCameraRow');
+const rangeZoomCamera = document.getElementById('rangeZoomCamera');
+const valZoomCamera = document.getElementById('valZoomCamera');
+let currentVideoTrack = null;
+
 const modalDuplicati = document.getElementById('modalDuplicati');
 const modalBox = document.getElementById('modalBox');
 const modalTitle = document.getElementById('modalTitle');
@@ -26,49 +31,30 @@ const previewRitaglio = document.getElementById('previewRitaglio');
 const btnAggiungiRiga = document.getElementById('btnAggiungiRiga');
 const btnConfermaCorrezione = document.getElementById('btnConfermaCorrezione');
 const btnForzaJson = document.getElementById('btnForzaJson');
-const zoomCameraRow = document.getElementById('zoomCameraRow');
-const rangeZoomCamera = document.getElementById('rangeZoomCamera');
-const valZoomCamera = document.getElementById('valZoomCamera');
-let currentVideoTrack = null;
 
-
-
-
-
-
-
-// Schema ruoli standard Mod. B FIR dall'alto verso il basso (Estremo -> Pilone Sinistro)
 const SCHEMA_MOD_B_TITOLARI = [
   { maglia: '15', ruolo: 'E' },
   { maglia: '14', ruolo: 'AD' },
-  { maglia: '13', ruolo: 'CD' },
-  { maglia: '12', ruolo: 'CS' },
+  { maglia: '13', ruolo: 'CS' },
+  { maglia: '12', ruolo: 'CD' },
   { maglia: '11', ruolo: 'AS' },
   { maglia: '10', ruolo: 'MA' },
   { maglia: '9',  ruolo: 'MM' },
   { maglia: '8',  ruolo: '3C' },
-  { maglia: '7',  ruolo: '3D' },
-  { maglia: '6',  ruolo: '3S' },
-  { maglia: '5',  ruolo: '2D' },
-  { maglia: '4',  ruolo: '2S' },
+  { maglia: '7',  ruolo: '3S' },
+  { maglia: '6',  ruolo: '3D' },
+  { maglia: '5',  ruolo: '2S' },
+  { maglia: '4',  ruolo: '2D' },
   { maglia: '3',  ruolo: 'PD' },
   { maglia: '2',  ruolo: 'T' },
   { maglia: '1',  ruolo: 'PS' }
 ];
 
-// Coordinate percentuali esatte della tabella giocatori dentro il foglio A4 FIR
 const PDF_CALIBRATION = {
-  tableLeft: 0.012,    // 1.2% dal bordo sinistro A4
-  tableTop: 0.095,     // 9.5% dall'alto A4 (subito sotto intestazione N. Maglia | Ruolo | Cognome)
-  tableWidth: 0.587,   // 58.7% larghezza A4 (copre Maglia + Ruolo + Cognome e Nome)
-  tableHeight: 0.455,  // 45.5% altezza A4 (arriva fino alla riga 23 / fine panchina)
-  colMagliaPct: 11.9,  // 7.0% / 58.7% = 11.9% della zona ritagliata
-  colRuoloPct: 8.9     // 5.2% / 58.7% = 8.9% della zona ritagliata
+  tableLeft: 0.012,
+  tableTop: 0.095,
+  tableWidth: 0.587
 };
-
-
-
-
 
 let datiTemporanei = [];
 let fonteTemporanea = '';
@@ -96,7 +82,6 @@ function unisciConPrecompilata(datiEstratti) {
     const nome = String(estr.cognome_nome || '').trim().toUpperCase();
 
     if (idx < lista.length) {
-      // Mantiene il ruolo fisso della riga (E, AD, CD...) e aggiorna numero maglia (anche 99) e nome
       if (numMaglia) lista[idx].maglia = numMaglia;
       if (nome) lista[idx].cognome_nome = nome;
     } else if (numMaglia || nome) {
@@ -118,9 +103,9 @@ btnToggleGrid.addEventListener('click', () => {
 function aggiornaGriglia() {
   const righeTit = parseInt(rangeRigheTit.value, 10);
   const righeRis = parseInt(rangeRigheRis.value, 10);
-  const colMagliaPct = parseInt(rangeColMaglia.value, 10); // default 12% della tabella
-  const colRuoloPct = parseInt(rangeColRuolo.value, 10);   // default 9% della tabella
-  const zoomMirino = parseInt(rangeAltezza.value, 10);      // controlla larghezza/zoom mirino (es. 88%)
+  const colMagliaPct = parseInt(rangeColMaglia.value, 10);
+  const colRuoloPct = parseInt(rangeColRuolo.value, 10);
+  const zoomMirino = parseInt(rangeAltezza.value, 10);
 
   document.getElementById('valRigheTit').innerText = righeTit;
   document.getElementById('valRigheRis').innerText = righeRis;
@@ -128,13 +113,11 @@ function aggiornaGriglia() {
   document.getElementById('valColRuolo').innerText = colRuoloPct + '%';
   document.getElementById('valAltezza').innerText = zoomMirino + '%';
 
-  // Dimensione grande e leggibile su smartphone mantenendo proporzione A4
   mirino.style.width = zoomMirino + '%';
   mirino.style.height = 'auto';
   mirino.style.aspectRatio = '210 / 297';
   mirino.style.maxHeight = '95%';
 
-  // Calcola l'altezza della tabella blu in base al numero di righe (titolari + 2 vuote + panchina)
   const totaleRighe = righeTit + 2 + (righeRis > 0 ? righeRis + 1 : 0);
   const altezzaTabellaPct = Math.min(85, (totaleRighe * 1.82)).toFixed(1);
 
@@ -162,57 +145,13 @@ function aggiornaGriglia() {
   }));
 }
 
-function catturaMirinoEsatto() {
-  const videoRect = video.getBoundingClientRect();
-  // Ritaglia direttamente l'area esatta del riquadro blu (boxTabella) rispetto al video!
-  const boxTabella = document.getElementById('boxTabella') || mirino;
-  const targetRect = boxTabella.getBoundingClientRect();
-
-  const videoRatio = video.videoWidth / video.videoHeight;
-  const elemRatio = videoRect.width / videoRect.height;
-
-  let renderWidth, renderHeight, offsetX, offsetY;
-  if (elemRatio > videoRatio) {
-    renderWidth = videoRect.width;
-    renderHeight = videoRect.width / videoRatio;
-    offsetX = 0;
-    offsetY = (videoRect.height - renderHeight) / 2;
-  } else {
-    renderHeight = videoRect.height;
-    renderWidth = videoRect.height * videoRatio;
-    offsetX = (videoRect.width - renderWidth) / 2;
-    offsetY = 0;
-  }
-
-  const scaleX = video.videoWidth / renderWidth;
-  const scaleY = video.videoHeight / renderHeight;
-
-  const cropX = (targetRect.left - videoRect.left - offsetX) * scaleX;
-  const cropY = (targetRect.top - videoRect.top - offsetY) * scaleY;
-  const cropWidth = targetRect.width * scaleX;
-  const cropHeight = targetRect.height * scaleY;
-
-  canvas.width = cropWidth;
-  canvas.height = cropHeight;
-  canvas.getContext('2d').drawImage(video, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
-}
-
-
-
-
-function creaCella(classe) {
-  const cell = document.createElement('div');
-  cell.className = classe;
-  return cell;
-}
-
 const savedPrefs = JSON.parse(localStorage.getItem('grid_prefs_modb') || 'null');
 if (savedPrefs) {
   rangeRigheTit.value = savedPrefs.righeTit ?? 15;
   rangeRigheRis.value = savedPrefs.righeRis ?? 7;
   rangeColMaglia.value = savedPrefs.colMaglia ?? 12;
-  rangeColRuolo.value = savedPrefs.colRuolo ?? 11;
-  rangeAltezza.value = savedPrefs.altezza ?? 82;
+  rangeColRuolo.value = savedPrefs.colRuolo ?? 9;
+  rangeAltezza.value = savedPrefs.altezza ?? 88;
 }
 [rangeRigheTit, rangeRigheRis, rangeColMaglia, rangeColRuolo, rangeAltezza].forEach(el => {
   el.addEventListener('input', aggiornaGriglia);
@@ -316,13 +255,13 @@ function finalizzaOutputJson(dati, fonte) {
     ? '<span class="badge online">ONLINE: Letto con Gemini AI</span>'
     : '<span class="badge offline">OFFLINE: Letto localmente</span>';
   outputJson.textContent = JSON.stringify(dati, null, 2);
-  stato.innerText = 'JSON pronto: ${dati.length} giocatori in lista.';
-btnCopia.style.display = 'block';
+  stato.innerText = `JSON pronto: ${dati.length} giocatori in lista.`;
+  btnCopia.style.display = 'block';
 }
-// Ritaglio preciso compensando object-fit: cover su schermi allungati
 function catturaMirinoEsatto() {
 const videoRect = video.getBoundingClientRect();
-const mirinoRect = mirino.getBoundingClientRect();
+const boxTabella = document.getElementById('boxTabella') || mirino;
+const targetRect = boxTabella.getBoundingClientRect();
 const videoRatio = video.videoWidth / video.videoHeight;
 const elemRatio = videoRect.width / videoRect.height;
 let renderWidth, renderHeight, offsetX, offsetY;
@@ -339,17 +278,16 @@ offsetY = 0;
 }
 const scaleX = video.videoWidth / renderWidth;
 const scaleY = video.videoHeight / renderHeight;
-const cropX = (mirinoRect.left - videoRect.left - offsetX) * scaleX;
-const cropY = (mirinoRect.top - videoRect.top - offsetY) * scaleY;
-const cropWidth = mirinoRect.width * scaleX;
-const cropHeight = mirinoRect.height * scaleY;
+const cropX = (targetRect.left - videoRect.left - offsetX) * scaleX;
+const cropY = (targetRect.top - videoRect.top - offsetY) * scaleY;
+const cropWidth = targetRect.width * scaleX;
+const cropHeight = targetRect.height * scaleY;
 canvas.width = cropWidth;
 canvas.height = cropHeight;
 canvas.getContext('2d').drawImage(video, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
 }
 async function eseguiScansioneDaCanvas() {
-// Mostra subito l'anteprima del ritaglio dentro il pop-up
-previewRitaglio.src = canvas.toDataURL('image/jpeg', 0.7);
+previewRitaglio.src = canvas.toDataURL('image/jpeg', 0.75);
 previewRitaglio.style.display = 'block';
 try {
 const apiKey = apiKeyInput.value.trim();
@@ -383,98 +321,106 @@ stato.innerText = "Impossibile copiare automaticamente. Seleziona il testo.";
 }
 });
 function configuraZoomCamera(stream) {
-  const tracks = stream.getVideoTracks();
-  if (!tracks || tracks.length === 0) return;
-  currentVideoTrack = tracks[0];
-
-  const capabilities = currentVideoTrack.getCapabilities ? currentVideoTrack.getCapabilities() : {};
-  if (capabilities.zoom) {
-    rangeZoomCamera.min = capabilities.zoom.min || 1;
-    rangeZoomCamera.max = Math.min(capabilities.zoom.max || 4, 4);
-    rangeZoomCamera.step = capabilities.zoom.step || 0.1;
-
-    const zoomIniziale = Math.min(Math.max(1.3, capabilities.zoom.min), rangeZoomCamera.max);
-    rangeZoomCamera.value = zoomIniziale;
-    valZoomCamera.innerText = zoomIniziale.toFixed(1) + 'x';
-    currentVideoTrack.applyConstraints({ advanced: [{ zoom: zoomIniziale }] }).catch(() => {});
-
-    zoomCameraRow.style.display = 'flex';
-  }
+const tracks = stream.getVideoTracks();
+if (!tracks || tracks.length === 0) return;
+currentVideoTrack = tracks[0];
+const capabilities = currentVideoTrack.getCapabilities ? currentVideoTrack.getCapabilities() : {};
+if (capabilities.zoom) {
+rangeZoomCamera.min = capabilities.zoom.min || 1;
+rangeZoomCamera.max = Math.min(capabilities.zoom.max || 4, 4);
+rangeZoomCamera.step = capabilities.zoom.step || 0.1;
+const zoomIniziale = Math.min(Math.max(1.3, capabilities.zoom.min), rangeZoomCamera.max);
+rangeZoomCamera.value = zoomIniziale;
+valZoomCamera.innerText = zoomIniziale.toFixed(1) + 'x';
+currentVideoTrack.applyConstraints({ advanced: [{ zoom: zoomIniziale }] }).catch(() => {});
+zoomCameraRow.style.display = 'flex';
 }
-
+}
 if (rangeZoomCamera) {
-  rangeZoomCamera.addEventListener('input', async () => {
-    const val = parseFloat(rangeZoomCamera.value);
-    valZoomCamera.innerText = val.toFixed(1) + 'x';
-    if (currentVideoTrack) {
-      try {
-        await currentVideoTrack.applyConstraints({ advanced: [{ zoom: val }] });
-      } catch (e) {
-        console.warn("Zoom non applicabile:", e);
-      }
-    }
-  });
+rangeZoomCamera.addEventListener('input', async () => {
+const val = parseFloat(rangeZoomCamera.value);
+valZoomCamera.innerText = val.toFixed(1) + 'x';
+if (currentVideoTrack) {
+try {
+await currentVideoTrack.applyConstraints({ advanced: [{ zoom: val }] });
+} catch (e) {
+console.warn("Zoom non applicabile:", e);
 }
-
+}
+});
+}
 function avviaCameraConTimeout(vincoli, ms = 4000) {
-  return Promise.race([
-    navigator.mediaDevices.getUserMedia(vincoli),
-    new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout fotocamera")), ms))
-  ]);
+return Promise.race([
+navigator.mediaDevices.getUserMedia(vincoli),
+new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout fotocamera")), ms))
+]);
 }
-
 async function avviaCameraSicura() {
-  stato.innerText = "Richiesta accesso fotocamera...";
-  if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-    stato.innerText = "Usa il tasto Fotocamera / Galleria qui sotto.";
-    return;
-  }
-  try {
-    const stream = await avviaCameraConTimeout({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-      audio: false
-    }, 4000);
-    video.srcObject = stream;
-    await video.play();
-    configuraZoomCamera(stream);
-    stato.innerText = navigator.onLine ? "Pronto (Online)" : "Pronto (Offline)";
-  } catch (err) {
-    try {
-      const fallback = await avviaCameraConTimeout({ video: true, audio: false }, 3000);
-      video.srcObject = fallback;
-      await video.play();
-      configuraZoomCamera(fallback);
-      stato.innerText = "Pronto (Fotocamera standard)";
-    } catch (err2) {
-      stato.innerText = "Fotocamera live non disponibile. Usa Fotocamera / Galleria.";
-    }
-  }
+stato.innerText = "Richiesta accesso fotocamera...";
+if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+stato.innerText = "Usa Fotocamera Nativa o Scegli da Galleria.";
+return;
 }
-
+try {
+const stream = await avviaCameraConTimeout({
+video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+audio: false
+}, 4000);
+video.srcObject = stream;
+await video.play();
+configuraZoomCamera(stream);
+stato.innerText = navigator.onLine ? "Pronto (Online)" : "Pronto (Offline)";
+} catch (err) {
+try {
+const fallback = await avviaCameraConTimeout({ video: true, audio: false }, 3000);
+video.srcObject = fallback;
+await video.play();
+configuraZoomCamera(fallback);
+stato.innerText = "Pronto (Fotocamera standard)";
+} catch (err2) {
+stato.innerText = "Fotocamera live non disponibile. Usa Fotocamera Nativa o Galleria.";
+}
+}
+}
 avviaCameraSicura();
-
-const inputFotoNativa = document.getElementById('inputFotoNativa');
+// Funzione condivisa per elaborare qualsiasi file immagine da Fotocamera Nativa o Galleria
+function gestisciFileImmagine(file) {
+if (!file) return;
+btnCopia.style.display = 'none';
+badgeContainer.innerHTML = '';
+stato.innerText = "Caricamento immagine selezionata...";
+const img = new Image();
+img.onload = async () => {
+const maxDim = 1800;
+const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+canvas.width = Math.round(img.width * scale);
+canvas.height = Math.round(img.height * scale);
+canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+await eseguiScansioneDaCanvas();
+};
+img.src = URL.createObjectURL(file);
+}
+// Pulsante 1: Fotocamera Nativa
 const btnFotoNativa = document.getElementById('btnFotoNativa');
-
+const inputFotoNativa = document.getElementById('inputFotoNativa');
 if (btnFotoNativa && inputFotoNativa) {
-  btnFotoNativa.addEventListener('click', () => inputFotoNativa.click());
-  inputFotoNativa.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const img = new Image();
-    img.onload = async () => {
-      const cropX = img.width * PDF_CALIBRATION.tableLeft;
-      const cropY = img.height * PDF_CALIBRATION.tableTop;
-      const cropWidth = img.width * PDF_CALIBRATION.tableWidth;
-      const cropHeight = img.height * PDF_CALIBRATION.tableHeight;
-
-      canvas.width = cropWidth;
-      canvas.height = cropHeight;
-      canvas.getContext('2d').drawImage(img, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
-
-      stato.innerText = "Elaborazione foto acquisita...";
-      await eseguiScansioneDaCanvas();
-    };
-    img.src = URL.createObjectURL(file);
-  });
+btnFotoNativa.addEventListener('click', () => {
+inputFotoNativa.value = '';
+inputFotoNativa.click();
+});
+inputFotoNativa.addEventListener('change', (e) => {
+gestisciFileImmagine(e.target.files[0]);
+});
+}
+// Pulsante 2: Scegli da Galleria
+const btnGalleria = document.getElementById('btnGalleria');
+const inputGalleria = document.getElementById('inputGalleria');
+if (btnGalleria && inputGalleria) {
+btnGalleria.addEventListener('click', () => {
+inputGalleria.value = '';
+inputGalleria.click();
+});
+inputGalleria.addEventListener('change', (e) => {
+gestisciFileImmagine(e.target.files[0]);
+});
 }

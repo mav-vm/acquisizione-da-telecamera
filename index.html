@@ -11,9 +11,10 @@
     body { background: #121212; color: #f5f5f5; display: flex; flex-direction: column; min-height: 100vh; padding: 10px; gap: 10px; }
     header { display: flex; justify-content: space-between; align-items: center; }
     h1 { font-size: 1.1rem; }
-    button { background: #007bff; color: #fff; border: none; border-radius: 8px; padding: 10px 14px; font-size: 0.95rem; font-weight: 600; cursor: pointer; }
+    button { background: #007bff; color: #fff; border: none; border-radius: 8px; padding: 11px 12px; font-size: 0.92rem; font-weight: 600; cursor: pointer; }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
     button.secondary { background: #333; }
+    button.gallery { background: #6f42c1; }
     button.success { background: #28a745; }
     button.danger-small { background: #dc3545; padding: 4px 10px; font-size: 1rem; border-radius: 6px; }
 
@@ -22,15 +23,14 @@
     .setting-row label { display: flex; justify-content: space-between; margin-bottom: 4px; }
     input[type="text"], input[type="password"] { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #444; background: #2a2a2a; color: #fff; }
 
-    /* Contenitore fotocamera e mirino A4 centrato senza conflitti CSS */
     .camera-wrapper {
       position: relative;
       width: 100%;
-      height: 74vh;
+      height: 62vh;
       background: #000;
       border-radius: 12px;
       overflow: hidden;
-     }
+    }
     #camera {
       width: 100%;
       height: 100%;
@@ -49,18 +49,10 @@
       box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
       pointer-events: none;
     }
-
     .mirino-label {
       position: absolute; top: -22px; left: 50%; transform: translateX(-50%);
       background: #00ff88; color: #000; font-size: 0.7rem; font-weight: 700;
       padding: 2px 8px; border-radius: 4px; white-space: nowrap;
-    }
-    .col-maglia { border: 1px solid rgba(168, 85, 247, 0.45); background: rgba(168, 85, 247, 0.08); }
-    .col-ruolo  { border: 1px solid rgba(239, 68, 68, 0.45);  background: rgba(239, 68, 68, 0.08); }
-    .col-nome   { border: 1px solid rgba(59, 130, 246, 0.45); background: rgba(59, 130, 246, 0.08); }
-    .row-panchina {
-      grid-column: 1 / -1; background: rgba(250, 204, 21, 0.35); color: #fff;
-      font-size: 0.65rem; font-weight: 700; display: flex; align-items: center; justify-content: center;
     }
 
     .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -94,14 +86,18 @@
 <body>
 
   <header>
-    <h1>Scanner Distinta Mod. B<small id="appVersion" style="font-size: 0.65em; color: #888; font-weight: normal;"></small</h1>
+    <h1>Scanner Distinta Mod. B</h1>
     <button type="button" id="btnToggleGrid" class="secondary">Regola Griglia / API</button>
   </header>
 
   <div id="gridSettings">
     <div class="setting-row">
-      <label for="apiKeyInput">Gemini API Key (opzionale per analisi Online):</label>
-      <input type="password" id="apiKeyInput" placeholder="Incolla API Key Gemini...">
+      <label for="apiKeyInput">Gemini API Key (per analisi Online):</label>
+      <input type="password" id="apiKeyInput" placeholder="Incolla API Key Gemini (AQ... o AIza...)">
+    </div>
+    <div class="setting-row" id="zoomCameraRow" style="display:none;">
+      <label>Zoom Fotocamera Live: <strong id="valZoomCamera">1.0x</strong></label>
+      <input type="range" id="rangeZoomCamera" min="1" max="3" step="0.1" value="1">
     </div>
     <div class="setting-row">
       <label>Righe Titolari: <strong id="valRigheTit">15</strong></label>
@@ -116,15 +112,13 @@
       <input type="range" id="rangeColMaglia" min="8" max="20" value="12">
     </div>
     <div class="setting-row">
-      <label>Larghezza Ruolo: <strong id="valColRuolo">11%</strong></label>
-      <input type="range" id="rangeColRuolo" min="8" max="20" value="11">
+      <label>Larghezza Ruolo: <strong id="valColRuolo">9%</strong></label>
+      <input type="range" id="rangeColRuolo" min="6" max="20" value="9">
     </div>
     <div class="setting-row">
-      <label>Zoom Altezza Mirino A4: <strong id="valAltezza">82%</strong></label>
-      <input type="range" id="rangeAltezza" min="50" max="96" value="82">
+      <label>Larghezza Mirino A4: <strong id="valAltezza">88%</strong></label>
+      <input type="range" id="rangeAltezza" min="50" max="96" value="88">
     </div>
-    <input type="hidden" id="rangeLarghezza" value="92">
-    <span id="valLarghezza" style="display:none;">92%</span>
   </div>
 
   <div class="camera-wrapper">
@@ -132,18 +126,19 @@
     <div id="mirino"></div>
   </div>
   <canvas id="canvas" style="display:none;"></canvas>
-  <div class="setting-row" id="zoomCameraRow" style="display:none;">
-    <label>Zoom Fotocamera: <strong id="valZoomCamera">1.0x</strong></label>
-    <input type="range" id="rangeZoomCamera" min="1" max="3" step="0.1" value="1">
-  </div>
 
   <div class="controls">
-    <button type="button" id="btnScatta">Scatta ed Estrai</button>
-    <button type="button" id="btnFotoNativa" class="secondary">Fotocamera / Galleria</button>
-    <button type="button" id="btnModificaLista" class="secondary">Modifica Lista</button>
+    <button type="button" id="btnScatta">Scatta Live</button>
+    <button type="button" id="btnFotoNativa" class="secondary">Fotocamera Nativa</button>
+    <button type="button" id="btnGalleria" class="gallery">Scegli da Galleria</button>
+    <button type="button" id="btnModificaLista" class="secondary" style="grid-column: 1 / -1;">Modifica / Verifica Lista</button>
     <button type="button" id="btnCopia" class="success" style="grid-column: 1 / -1; display:none;">Copia JSON</button>
   </div>
+
+  <!-- Input 1: Apre direttamente la fotocamera di sistema -->
   <input type="file" id="inputFotoNativa" accept="image/*" capture="environment" style="display:none;">
+  <!-- Input 2: Apre la Galleria / File Manager senza killare la scheda su Android -->
+  <input type="file" id="inputGalleria" accept="image/*" style="display:none;">
 
   <div id="stato">Avvio fotocamera...</div>
   <div id="badgeContainer" style="text-align:center;"></div>
@@ -154,7 +149,7 @@
     <div id="modalBox">
       <h3 id="modalTitle">Verifica Giocatori</h3>
       <p id="modalMsg" style="font-size:0.82rem; color:#ccc;"></p>
-      <img id="previewRitaglio" alt="Anteprima ritaglio">
+      <img id="previewRitaglio" alt="Anteprima immagine">
       <div id="modalList"></div>
       <div class="modal-actions">
         <button type="button" id="btnAggiungiRiga" class="secondary">+ Riga</button>
