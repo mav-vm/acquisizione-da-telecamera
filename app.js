@@ -58,6 +58,7 @@ const PDF_CALIBRATION = {
 
 let datiTemporanei = [];
 let fonteTemporanea = '';
+let ultimoErroreDebug = '';
 
 function creaListaPrecompilata() {
   const numTit = parseInt(rangeRigheTit.value, 10) || 15;
@@ -276,6 +277,10 @@ btnForzaJson.addEventListener('click', () => {
   datiTemporanei = leggiRigheDaModale();
   modalDuplicati.style.display = 'none';
   finalizzaOutputJson(datiTemporanei, fonteTemporanea);
+  
+  if (ultimoErroreDebug) {
+    outputJson.textContent = "⚠️ DETTAGLIO ERRORE:\n" + ultimoErroreDebug + "\n\n" + outputJson.textContent;
+  }
 });
 
 function finalizzaOutputJson(dati, fonte) {
@@ -320,11 +325,13 @@ function catturaMirinoEsatto() {
 }
 
 async function eseguiScansioneDaCanvas() {
+	ultimoErroreDebug = '';
   previewRitaglio.src = canvas.toDataURL('image/jpeg', 0.75);
   previewRitaglio.style.display = 'block';
 
   if (typeof elaboraDistinta !== 'function') {
-    stato.innerText = "Errore: funzione elaboraDistinta mancante nel progetto.";
+  	ultimoErroreDebug = "Funzione elaboraDistinta mancante nel progetto.";
+    stato.innerText = "Errore:"+ ultimoErroreDebug";
     return;
   }
 
@@ -339,9 +346,10 @@ async function eseguiScansioneDaCanvas() {
     apriEditorLista(datiTemporanei, trovaMaglieDuplicate(datiTemporanei));
     stato.innerText = "Controlla i dati nel pop-up e premi Conferma.";
   } catch (err) {
+  	ultimoErroreDebug = err.message || String(err);
     datiTemporanei = creaListaPrecompilata();
     apriEditorLista(datiTemporanei, []);
-    stato.innerText = "OCR non riuscito (" + err.message + "): compila manualmente.";
+    stato.innerText = "Errore Gemini: premi 'Chiudi / Forza JSON' per leggerlo.";
   }
 }
 

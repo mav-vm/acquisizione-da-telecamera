@@ -87,7 +87,7 @@ async function estraiConGemini(canvasElement, apiKey, onStatusUpdate) {
   if (onStatusUpdate) onStatusUpdate("Analisi con Gemini 4 Hydrogen...");
   const dataUrl = canvasElement.toDataURL('image/jpeg', 0.80);
   const base64Image = dataUrl.substring(dataUrl.indexOf(',') + 1);
-  const url = 'https://googleapis.com';
+  const url = 'https://googleapis.com' + encodeURIComponent(apiKey.trim());
 
   const prompt = `Leggi questa distinta rugby Mod. B. Restituisci SOLO un array JSON puro (senza markdown) con tutti i giocatori dall'alto in basso (titolari e riserve) e l'allenatore in fondo.
 Formato esatto: [{"maglia":"15","ruolo":"E","cognome_nome":"COGNOME, NOME"}]
@@ -104,18 +104,17 @@ Regole:
     res = await fetch(url, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey.trim(),
-        'Api-Revision': '2026-05-20'
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'models/gemini-4-hydrogen',
-        input: [
-          { type: 'text', text: prompt },
-          { type: 'image', data: base64Image, mime_type: 'image/jpeg' }
-        ],
-        generation_config: {
-          thinking_level: 'low'
+        contents: [{
+          parts: [
+            { text: prompt },
+            { inline_data: { mime_type: 'image/jpeg', data: base64Image } }
+          ]
+        }],
+        generationConfig: {
+          temperature: 0.1
         }
       }),
       signal: controller.signal
@@ -132,34 +131,13 @@ Regole:
   }
 
   const data = await res.json();
-  
-  // DEBUG: mostra nel riquadro nero cosa ha risposto esattamente Gemini 4 Hydrogen
-  const boxJson = document.getElementById('outputJson');
-  if (boxJson) {
-    boxJson.textContent = "RISPOSTA GREZZA GEMINI:\n" + JSON.stringify(data, null, 2);
-  }
-  
-  
-  // Estrae il testo dall'ultimo step model_output delle Interactions API
-  const steps = data.steps || [];
-  let rawText = '';
-  for (let i = steps.length - 1; i >= 0; i--) {
-    if (steps.at(i).type === 'model_output' && Array.isArray(steps.at(i).content)) {
-      const textBlock = steps.at(i).content.find(c => c.type === 'text');
-      if (textBlock && textBlock.text) {
-        rawText = textBlock.text;
-        break;
-      }
-    }
-  }
-
-  if (!rawText) {
-    throw new Error('Risposta vuota da Gemini 4 Hydrogen');
-  }
-
+  const candidate = data.candidates && data.candidates.at(0);
+  const part = candidate && candidate.content && candidate.content.parts && candidate.content.parts.at(0);
+  const rawText = part && part.text ? part.text : '[]';
   const jsonPulito = rawText.replace(/```json|```/g, '').trim();
   return JSON.parse(jsonPulito);
 }
+
 
 
 
