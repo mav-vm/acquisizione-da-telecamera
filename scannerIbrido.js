@@ -83,113 +83,43 @@ async function ottieniModelliDisponibili(apiKey) {
   return validi;
 }
 
-async function estraiConGemini(canvasElement, apiKey, onStatusUpdate) {
-  // Ridimensiona a max 1280px con qualità 0.75: nitidissimo ma velocissimo da caricare in 4G
-  const maxLato = 1280;
-  let canvasInvio = canvasElement;
-  if (Math.max(canvasElement.width, canvasElement.height) > maxLato) {
-    const scala = maxLato / Math.max(canvasElement.width, canvasElement.height);
-    canvasInvio = document.createElement('canvas');
-    canvasInvio.width = Math.round(canvasElement.width * scala);
-    canvasInvio.height = Math.round(canvasElement.height * scala);
-    canvasInvio.getContext('2d').drawImage(canvasElement, 0, 0, canvasInvio.width, canvasInvio.height);
-  }
-
-  const dataUrl = canvasInvio.toDataURL('image/jpeg', 0.75);
+async function estraiConGemini(canvasElement, apiKey) {
+  const dataUrl = canvasElement.toDataURL('image/jpeg', 0.75);
   const base64Image = dataUrl.substring(dataUrl.indexOf(',') + 1);
+  const url = 'https://googleapis.com' + encodeURIComponent(apiKey.trim());
 
-  if (onStatusUpdate) onStatusUpdate("Verifica modelli Gemini Flash...");
-  const modelliAttivi = await ottieniModelliDisponibili(apiKey);
+  const prompt = `Leggi questa distinta rugby Mod. B. Restituisci SOLO un array JSON puro (senza markdown \`\`\`) con tutti i giocatori dall'alto in basso (titolari e riserve) e l'allenatore in fondo.
+Formato esatto: [{"maglia":"15","ruolo":"E","cognome_nome":"COGNOME, NOME"}]
+Regole:
+- Se il numero maglia è corretto a penna, usa quello a penna.
+- Mantieni (IL), (V), (C) e ruoli panchina accanto al nome. Escludi tessera FIR e date.
+- Per l'allenatore in fondo usa: {"maglia":"","ruolo":"ALL","cognome_nome":"COGNOME, NOME"}.`;
 
-  const promptTesto = `
-Analizza questa immagine di una distinta di gara della Federazione Italiana Rugby (Mod. B).
-Estrai dall'alto verso il basso i giocatori titolari, i giocatori in panchina e l'allenatore in fondo.
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{
+        parts: [
+          { text: prompt },
+          { inline_data: { mime_type: 'image/jpeg', data: base64Image } }
+        ]
+      }],
+      generationConfig: { temperature: 0.1 }
+    })
+  });
 
-Regole rigorose:
-1. GIOCATORI TITOLARI (prime 15 righe) E GIOCATORI IN PANCHINA (sezione "Giocatori in panchina"):
-   - Ignora la riga separatrice "Giocatori in panchina" e le eventuali righe vuote con puntini.
-   - "maglia": numero di maglia definitivo (1-99). Se il numero stampato è barrato o corretto a penna (es. 11 corretto in 35), restituisci il numero scritto a penna.
-   - "ruolo": sigla nella colonna Ruolo (es. E, AD, CS, CD, AS, MA, MM, 3C, 3S, 3D, 2S, 2D, PD, T, PS, oppure RI per la panchina).
-   - "cognome_nome": trascrivi "COGNOME, NOME" in maiuscolo. MANTIENI le diciture (IL), (V), (C) e le eventuali indicazioni di ruolo in panchina come (PS/T) o (T) se presenti accanto al nome. NON includere numero tessera FIR, data di nascita o numero documento.
-2. ALLENATORE (in fondo al foglio, sotto "Sostituzioni"):
-   - Aggiungi alla fine della lista l'Allenatore (campo "Allenatore:") con:
-     - "maglia": ""
-     - "ruolo": "ALL"
-     - "cognome_nome": "COGNOME, NOME" in maiuscolo (pulito, senza altre diciture).
-
-Restituisci esclusivamente un array JSON valido.
-`;
-
-  const responseSchema = {
-    type: "ARRAY",
-    items: {
-      type: "OBJECT",
-      properties: {
-        maglia: { type: "STRING" },
-        ruolo: { type: "STRING" },
-        cognome_nome: { type: "STRING" }
-      },
-      required: ["maglia", "ruolo", "cognome_nome"]
-    }
-  };
-
-  const payload = {
-    contents: [{
-      parts: [
-        { text: promptTesto },
-        { inline_data: { mime_type: "image/jpeg", data: base64Image } }
-      ]
-    }],
-    generationConfig: {
-      response_mime_type: "application/json",
-      response_schema: responseSchema,
-      temperature: 0.1,
-      thinkingConfig: { thinkingBudget: 0 }
-    }
-  };
-
-  let ultimoErrore = null;
-
-  for (const modello of modelliAttivi.slice(0, 3)) {
-    if (onStatusUpdate) onStatusUpdate("Analisi rapida con " + modello + "...");
-    const url = 'https://googleapis.com' + modello + ':generateContent?key=' + encodeURIComponent(apiKey);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000);
-
-    try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        const dettagli = errData.error && errData.error.message ? errData.error.message : ("HTTP " + response.status);
-        throw new Error(modello + ": " + dettagli);
-      }
-
-      const data = await response.json();
-      const candidate = data.candidates && data.candidates.at(0);
-      const part = candidate && candidate.content && candidate.content.parts && candidate.content.parts.at(0);
-      const testoRisposta = part && part.text;
-
-      if (!testoRisposta) {
-        throw new Error("Risposta vuota da " + modello);
-      }
-
-      return JSON.parse(testoRisposta);
-    } catch (err) {
-      clearTimeout(timeoutId);
-      ultimoErrore = err.name === 'AbortError' ? new Error("Timeout su " + modello) : err;
-      console.warn("Tentativo fallito:", ultimoErrore.message);
-    }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || 'HTTP ' + res.status);
   }
 
-  throw ultimoErrore || new Error("Nessun modello Gemini Flash ha risposto.");
+  const data = await res.json();
+  const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+  const jsonPulito = rawText.replace(/```json|```/g, '').trim();
+  return JSON.parse(jsonPulito);
 }
+
 
 function preparaStrisciaOCR(sourceCanvas, xPct, wPct) {
   // Aggiunge un margine interno del 3% per tagliare via i bordi verticali neri della tabella
