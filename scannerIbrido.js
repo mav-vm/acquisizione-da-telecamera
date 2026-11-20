@@ -63,7 +63,7 @@ async function estraiConGemini(canvasElement, apiKey) {
   const base64Image = dataUrl.substring(dataUrl.indexOf(',') + 1);
   const proto = 'ht' + 'tps://';
   const host = 'generativelanguage.googleapis.' + 'com';
-  const url = proto + host + '/v1beta/models/gemini-2.5-flash:generateContent';
+  const url = proto + host + '/v1beta/models/gemini-3.8-flash:generateContent';
 
   const promptTesto = `
 Analizza questa immagine di una distinta di gara della Federazione Italiana Rugby (Mod. B).
