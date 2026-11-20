@@ -84,15 +84,30 @@ async function ottieniModelliDisponibili(apiKey) {
 }
 
 async function estraiConGemini(canvasElement, apiKey, onStatusUpdate) {
-  if (onStatusUpdate) onStatusUpdate("Analisi con Gemini 4 Hydrogen...");
-  const dataUrl = canvasElement.toDataURL('image/jpeg', 0.80);
+  const inizio = Date.now();
+  const secondiContoAllaRovescia = 45;
+  const timeoutRealeMs = 55000; // Margine di sicurezza reale (55s) per coprire i ~38s di elaborazione
+  let timerId = null;
+
+  if (onStatusUpdate) {
+    onStatusUpdate("Analisi con Gemini AI... attendi circa " + secondiContoAllaRovescia + "s");
+    timerId = setInterval(() => {
+      const trascorsi = Math.floor((Date.now() - inizio) / 1000);
+      const rimanenti = secondiContoAllaRovescia - trascorsi;
+      if (rimanenti > 0) {
+        onStatusUpdate("Analisi con Gemini AI... attendi circa " + rimanenti + "s");
+      } else {
+        onStatusUpdate("Quasi pronto... completamento estrazione in corso");
+      }
+    }, 1000);
+  }
+
+  const dataUrl = canvasElement.toDataURL('image/jpeg', 0.75);
   const base64Image = dataUrl.substring(dataUrl.indexOf(',') + 1);
-  
   const proto = 'ht' + 'tps://';
   const host = 'generativelanguage.googleapis.' + 'com';
   const path = '/v1beta/models/gemini-4-hydrogen:generateContent?key=';
   const url = proto + host + path + encodeURIComponent(apiKey.trim());
-
 
   const prompt = `Leggi questa distinta rugby Mod. B. Restituisci SOLO un array JSON puro (senza markdown) con tutti i giocatori dall'alto in basso (titolari e riserve) e l'allenatore in fondo.
 Formato esatto: [{"maglia":"15","ruolo":"E","cognome_nome":"COGNOME, NOME"}]
@@ -102,7 +117,7 @@ Regole:
 - Per l'allenatore in fondo usa: {"maglia":"","ruolo":"ALL","cognome_nome":"COGNOME, NOME"}.`;
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 25000);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutRealeMs);
 
   let res;
   try {
@@ -126,9 +141,16 @@ Regole:
     });
   } catch (err) {
     clearTimeout(timeoutId);
-    throw new Error(err.name === 'AbortError' ? 'Timeout connessione (25s)' : err.message);
+    if (timerId) clearInterval(timerId);
+    throw new Error(err.name === 'AbortError' ? 'Timeout connessione (55s)' : err.message);
   }
   clearTimeout(timeoutId);
+  if (timerId) clearInterval(timerId);
+
+  const secondiTotali = ((Date.now() - inizio) / 1000).toFixed(1);
+  if (onStatusUpdate) {
+    onStatusUpdate("Completato in " + secondiTotali + "s!");
+  }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -142,6 +164,8 @@ Regole:
   const jsonPulito = rawText.replace(/```json|```/g, '').trim();
   return JSON.parse(jsonPulito);
 }
+
+
 
 
 
