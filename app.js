@@ -159,8 +159,9 @@ if (savedPrefs) {
 aggiornaGriglia();
 datiTemporanei = creaListaPrecompilata();
 
+// MODIFICA 1: Salvataggio istantaneo della API key durante la digitazione/incolla
 apiKeyInput.value = localStorage.getItem('gemini_api_key') || '';
-apiKeyInput.addEventListener('change', () => {
+apiKeyInput.addEventListener('input', () => {
   localStorage.setItem('gemini_api_key', apiKeyInput.value.trim());
 });
 
@@ -209,7 +210,6 @@ function apriEditorLista(giocatori, duplicati = []) {
 
   modalDuplicati.style.display = 'flex';
 }
-
 btnAggiungiRiga.addEventListener('click', () => {
   modalList.appendChild(creaRigaEditor({ maglia: '', ruolo: 'RI', cognome_nome: '' }, false));
   modalList.scrollTop = modalList.scrollHeight;
@@ -258,169 +258,217 @@ function finalizzaOutputJson(dati, fonte) {
   stato.innerText = `JSON pronto: ${dati.length} giocatori in lista.`;
   btnCopia.style.display = 'block';
 }
+
 function catturaMirinoEsatto() {
-const videoRect = video.getBoundingClientRect();
-const boxTabella = document.getElementById('boxTabella') || mirino;
-const targetRect = boxTabella.getBoundingClientRect();
-const videoRatio = video.videoWidth / video.videoHeight;
-const elemRatio = videoRect.width / videoRect.height;
-let renderWidth, renderHeight, offsetX, offsetY;
-if (elemRatio > videoRatio) {
-renderWidth = videoRect.width;
-renderHeight = videoRect.width / videoRatio;
-offsetX = 0;
-offsetY = (videoRect.height - renderHeight) / 2;
-} else {
-renderHeight = videoRect.height;
-renderWidth = videoRect.height * videoRatio;
-offsetX = (videoRect.width - renderWidth) / 2;
-offsetY = 0;
+  const videoRect = video.getBoundingClientRect();
+  const boxTabella = document.getElementById('boxTabella') || mirino;
+  const targetRect = boxTabella.getBoundingClientRect();
+  const videoRatio = video.videoWidth / video.videoHeight;
+  const elemRatio = videoRect.width / videoRect.height;
+  let renderWidth, renderHeight, offsetX, offsetY;
+
+  if (elemRatio > videoRatio) {
+    renderWidth = videoRect.width;
+    renderHeight = videoRect.width / videoRatio;
+    offsetX = 0;
+    offsetY = (videoRect.height - renderHeight) / 2;
+  } else {
+    renderHeight = videoRect.height;
+    renderWidth = videoRect.height * videoRatio;
+    offsetX = (videoRect.width - renderWidth) / 2;
+    offsetY = 0;
+  }
+
+  const scaleX = video.videoWidth / renderWidth;
+  const scaleY = video.videoHeight / renderHeight;
+  const cropX = (targetRect.left - videoRect.left - offsetX) * scaleX;
+  const cropY = (targetRect.top - videoRect.top - offsetY) * scaleY;
+  const cropWidth = targetRect.width * scaleX;
+  const cropHeight = targetRect.height * scaleY;
+
+  canvas.width = cropWidth;
+  canvas.height = cropHeight;
+  canvas.getContext('2d').drawImage(video, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
 }
-const scaleX = video.videoWidth / renderWidth;
-const scaleY = video.videoHeight / renderHeight;
-const cropX = (targetRect.left - videoRect.left - offsetX) * scaleX;
-const cropY = (targetRect.top - videoRect.top - offsetY) * scaleY;
-const cropWidth = targetRect.width * scaleX;
-const cropHeight = targetRect.height * scaleY;
-canvas.width = cropWidth;
-canvas.height = cropHeight;
-canvas.getContext('2d').drawImage(video, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
-}
+
 async function eseguiScansioneDaCanvas() {
-previewRitaglio.src = canvas.toDataURL('image/jpeg', 0.75);
-previewRitaglio.style.display = 'block';
-try {
-const apiKey = apiKeyInput.value.trim();
-const risultato = await elaboraDistinta(canvas, apiKey, (msg) => {
-stato.innerText = msg;
-});
-datiTemporanei = unisciConPrecompilata(risultato.dati);
-fonteTemporanea = risultato.fonte;
-apriEditorLista(datiTemporanei, trovaMaglieDuplicate(datiTemporanei));
-stato.innerText = "Controlla i dati nel pop-up e premi Conferma.";
-} catch (err) {
-datiTemporanei = creaListaPrecompilata();
-apriEditorLista(datiTemporanei, []);
-stato.innerText = "OCR non riuscito (" + err.message + "): compila manualmente.";
+  previewRitaglio.src = canvas.toDataURL('image/jpeg', 0.75);
+  previewRitaglio.style.display = 'block';
+
+  if (typeof elaboraDistinta !== 'function') {
+    stato.innerText = "Errore: funzione elaboraDistinta mancante nel progetto.";
+    return;
+  }
+
+  try {
+    const apiKey = apiKeyInput.value.trim() || localStorage.getItem('gemini_api_key') || '';
+    stato.innerText = "Analisi immagine in corso...";
+    const risultato = await elaboraDistinta(canvas, apiKey, (msg) => {
+      stato.innerText = msg;
+    });
+    datiTemporanei = unisciConPrecompilata(risultato.dati);
+    fonteTemporanea = risultato.fonte;
+    apriEditorLista(datiTemporanei, trovaMaglieDuplicate(datiTemporanei));
+    stato.innerText = "Controlla i dati nel pop-up e premi Conferma.";
+  } catch (err) {
+    datiTemporanei = creaListaPrecompilata();
+    apriEditorLista(datiTemporanei, []);
+    stato.innerText = "OCR non riuscito (" + err.message + "): compila manualmente.";
+  }
 }
-}
+
 btnScatta.addEventListener('click', async () => {
-btnScatta.disabled = true;
-btnCopia.style.display = 'none';
-badgeContainer.innerHTML = '';
-catturaMirinoEsatto();
-await eseguiScansioneDaCanvas();
-btnScatta.disabled = false;
+  btnScatta.disabled = true;
+  btnCopia.style.display = 'none';
+  badgeContainer.innerHTML = '';
+  catturaMirinoEsatto();
+  await eseguiScansioneDaCanvas();
+  btnScatta.disabled = false;
 });
+
 btnCopia.addEventListener('click', async () => {
-try {
-await navigator.clipboard.writeText(outputJson.textContent);
-stato.innerText = "JSON copiato negli appunti!";
-} catch (err) {
-stato.innerText = "Impossibile copiare automaticamente. Seleziona il testo.";
-}
+  try {
+    await navigator.clipboard.writeText(outputJson.textContent);
+    stato.innerText = "JSON copiato negli appunti!";
+  } catch (err) {
+    stato.innerText = "Impossibile copiare automaticamente. Seleziona il testo.";
+  }
 });
+
+// MODIFICA 2: Funzione per spegnere la camera live e liberare hardware/RAM
+function fermaCameraLive() {
+  if (video.srcObject) {
+    video.srcObject.getTracks().forEach(track => track.stop());
+    video.srcObject = null;
+  }
+  currentVideoTrack = null;
+  if (zoomCameraRow) zoomCameraRow.style.display = 'none';
+}
+
 function configuraZoomCamera(stream) {
-const tracks = stream.getVideoTracks();
-if (!tracks || tracks.length === 0) return;
-currentVideoTrack = tracks[0];
-const capabilities = currentVideoTrack.getCapabilities ? currentVideoTrack.getCapabilities() : {};
-if (capabilities.zoom) {
-rangeZoomCamera.min = capabilities.zoom.min || 1;
-rangeZoomCamera.max = Math.min(capabilities.zoom.max || 4, 4);
-rangeZoomCamera.step = capabilities.zoom.step || 0.1;
-const zoomIniziale = Math.min(Math.max(1.3, capabilities.zoom.min), rangeZoomCamera.max);
-rangeZoomCamera.value = zoomIniziale;
-valZoomCamera.innerText = zoomIniziale.toFixed(1) + 'x';
-currentVideoTrack.applyConstraints({ advanced: [{ zoom: zoomIniziale }] }).catch(() => {});
-zoomCameraRow.style.display = 'flex';
+  const tracks = stream.getVideoTracks();
+  if (!tracks || tracks.length === 0) return;
+  currentVideoTrack = tracks[0];
+  const capabilities = currentVideoTrack.getCapabilities ? currentVideoTrack.getCapabilities() : {};
+  if (capabilities.zoom) {
+    rangeZoomCamera.min = capabilities.zoom.min || 1;
+    rangeZoomCamera.max = Math.min(capabilities.zoom.max || 4, 4);
+    rangeZoomCamera.step = capabilities.zoom.step || 0.1;
+    const zoomIniziale = Math.min(Math.max(1.3, capabilities.zoom.min), rangeZoomCamera.max);
+    rangeZoomCamera.value = zoomIniziale;
+    valZoomCamera.innerText = zoomIniziale.toFixed(1) + 'x';
+    currentVideoTrack.applyConstraints({ advanced: [{ zoom: zoomIniziale }] }).catch(() => {});
+    zoomCameraRow.style.display = 'flex';
+  }
 }
-}
+
 if (rangeZoomCamera) {
-rangeZoomCamera.addEventListener('input', async () => {
-const val = parseFloat(rangeZoomCamera.value);
-valZoomCamera.innerText = val.toFixed(1) + 'x';
-if (currentVideoTrack) {
-try {
-await currentVideoTrack.applyConstraints({ advanced: [{ zoom: val }] });
-} catch (e) {
-console.warn("Zoom non applicabile:", e);
+  rangeZoomCamera.addEventListener('input', async () => {
+    const val = parseFloat(rangeZoomCamera.value);
+    valZoomCamera.innerText = val.toFixed(1) + 'x';
+    if (currentVideoTrack) {
+      try {
+        await currentVideoTrack.applyConstraints({ advanced: [{ zoom: val }] });
+      } catch (e) {
+        console.warn("Zoom non applicabile:", e);
+      }
+    }
+  });
 }
-}
-});
-}
+
 function avviaCameraConTimeout(vincoli, ms = 4000) {
-return Promise.race([
-navigator.mediaDevices.getUserMedia(vincoli),
-new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout fotocamera")), ms))
-]);
+  return Promise.race([
+    navigator.mediaDevices.getUserMedia(vincoli),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout fotocamera")), ms))
+  ]);
 }
+
 async function avviaCameraSicura() {
-stato.innerText = "Richiesta accesso fotocamera...";
-if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-stato.innerText = "Usa Fotocamera Nativa o Scegli da Galleria.";
-return;
-}
-try {
-const stream = await avviaCameraConTimeout({
-video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-audio: false
-}, 4000);
-video.srcObject = stream;
-await video.play();
-configuraZoomCamera(stream);
-stato.innerText = navigator.onLine ? "Pronto (Online)" : "Pronto (Offline)";
-} catch (err) {
-try {
-const fallback = await avviaCameraConTimeout({ video: true, audio: false }, 3000);
-video.srcObject = fallback;
-await video.play();
-configuraZoomCamera(fallback);
-stato.innerText = "Pronto (Fotocamera standard)";
-} catch (err2) {
-stato.innerText = "Fotocamera live non disponibile. Usa Fotocamera Nativa o Galleria.";
-}
-}
+  stato.innerText = "Richiesta accesso fotocamera...";
+  if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+    stato.innerText = "Usa Fotocamera Nativa o Scegli da Galleria.";
+    return;
+  }
+  try {
+    const stream = await avviaCameraConTimeout({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: false
+    }, 4000);
+    video.srcObject = stream;
+    await video.play();
+    configuraZoomCamera(stream);
+    stato.innerText = navigator.onLine ? "Pronto (Online)" : "Pronto (Offline)";
+  } catch (err) {
+    try {
+      const fallback = await avviaCameraConTimeout({ video: true, audio: false }, 3000);
+      video.srcObject = fallback;
+      await video.play();
+      configuraZoomCamera(fallback);
+      stato.innerText = "Pronto (Fotocamera standard)";
+    } catch (err2) {
+      stato.innerText = "Fotocamera live non disponibile. Usa Fotocamera Nativa o Galleria.";
+    }
+  }
 }
 avviaCameraSicura();
-// Funzione condivisa per elaborare qualsiasi file immagine da Fotocamera Nativa o Galleria
+
+// MODIFICA 3: Caricamento immagine con FileReader per evitare crash al rientro dalla camera
 function gestisciFileImmagine(file) {
-if (!file) return;
-btnCopia.style.display = 'none';
-badgeContainer.innerHTML = '';
-stato.innerText = "Caricamento immagine selezionata...";
-const img = new Image();
-img.onload = async () => {
-const maxDim = 1800;
-const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-canvas.width = Math.round(img.width * scale);
-canvas.height = Math.round(img.height * scale);
-canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-await eseguiScansioneDaCanvas();
-};
-img.src = URL.createObjectURL(file);
+  if (!file) return;
+  btnCopia.style.display = 'none';
+  badgeContainer.innerHTML = '';
+  stato.innerText = "Caricamento immagine selezionata...";
+
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    const img = new Image();
+    img.onload = async () => {
+      const maxDim = 1600;
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      await eseguiScansioneDaCanvas();
+    };
+    img.onerror = () => {
+      stato.innerText = "Errore nella lettura del file immagine.";
+    };
+    img.src = event.target.result;
+  };
+  reader.onerror = () => {
+    stato.innerText = "Impossibile leggere la foto dalla memoria.";
+  };
+  reader.readAsDataURL(file);
 }
-// Pulsante 1: Fotocamera Nativa
+
+// Pulsante 1: Fotocamera Nativa (spegne prima la camera live)
 const btnFotoNativa = document.getElementById('btnFotoNativa');
 const inputFotoNativa = document.getElementById('inputFotoNativa');
 if (btnFotoNativa && inputFotoNativa) {
-btnFotoNativa.addEventListener('click', () => {
-inputFotoNativa.value = '';
-inputFotoNativa.click();
-});
-inputFotoNativa.addEventListener('change', (e) => {
-gestisciFileImmagine(e.target.files[0]);
-});
+  btnFotoNativa.addEventListener('click', () => {
+    fermaCameraLive();
+    inputFotoNativa.value = '';
+    inputFotoNativa.click();
+  });
+  inputFotoNativa.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files[0]) {
+      gestisciFileImmagine(e.target.files[0]);
+    }
+  });
 }
-// Pulsante 2: Scegli da Galleria
+
+// Pulsante 2: Scegli da Galleria (spegne prima la camera live)
 const btnGalleria = document.getElementById('btnGalleria');
 const inputGalleria = document.getElementById('inputGalleria');
 if (btnGalleria && inputGalleria) {
-btnGalleria.addEventListener('click', () => {
-inputGalleria.value = '';
-inputGalleria.click();
-});
-inputGalleria.addEventListener('change', (e) => {
-gestisciFileImmagine(e.target.files[0]);
-});
+  btnGalleria.addEventListener('click', () => {
+    fermaCameraLive();
+    inputGalleria.value = '';
+    inputGalleria.click();
+  });
+  inputGalleria.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files[0]) {
+      gestisciFileImmagine(e.target.files[0]);
+    }
+  });
 }
