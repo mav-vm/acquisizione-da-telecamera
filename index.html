@@ -84,9 +84,16 @@
   </style>
 </head>
 <body>
-
+	
+	<script src="version.js"></script>
+	<script>
+  // Legge la variabile dal file version.js e la inserisce nell'HTML
+  document.getElementById('app-version').textContent = 'v' + APP_VERSION;
+</script>
+	
+	
   <header>
-    <h1>Scanner Distinta Mod. B</h1>
+    <h1>Scanner Distinta Mod. B<span id="app-version" style="font-size: 0.65em; color: #A9A9A9; font-weight: normal;"></span></h1>
     <button type="button" id="btnToggleGrid" class="secondary">Regola Griglia / API</button>
   </header>
 

@@ -75,19 +75,27 @@ function creaListaPrecompilata() {
 }
 
 function unisciConPrecompilata(datiEstratti) {
-  const lista = creaListaPrecompilata();
+  if (datiEstratti && datiEstratti.length >= 10 && datiEstratti.some(d => d.cognome_nome && d.cognome_nome.length > 3)) {
+    return datiEstratti.map(estr => ({
+      maglia: String(estr.maglia || '').trim(),
+      ruolo: String(estr.ruolo || '').trim().toUpperCase(),
+      cognome_nome: String(estr.cognome_nome || '').trim().toUpperCase()
+    }));
+  }
 
+  const lista = creaListaPrecompilata();
   datiEstratti.forEach((estr, idx) => {
     const numMaglia = String(estr.maglia || '').trim();
     const nome = String(estr.cognome_nome || '').trim().toUpperCase();
+    const ruolo = String(estr.ruolo || '').trim().toUpperCase();
 
-    if (idx < lista.length) {
+    if (idx < lista.length && ruolo !== 'ALL') {
       if (numMaglia) lista[idx].maglia = numMaglia;
       if (nome) lista[idx].cognome_nome = nome;
     } else if (numMaglia || nome) {
       lista.push({
         maglia: numMaglia,
-        ruolo: String(estr.ruolo || 'RI').trim().toUpperCase(),
+        ruolo: ruolo || 'RI',
         cognome_nome: nome
       });
     }
@@ -95,6 +103,7 @@ function unisciConPrecompilata(datiEstratti) {
 
   return lista;
 }
+
 
 btnToggleGrid.addEventListener('click', () => {
   gridSettings.style.display = gridSettings.style.display === 'block' ? 'none' : 'block';

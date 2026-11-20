@@ -21,17 +21,23 @@ async function assicuraTesseract() {
 }
 
 async function elaboraDistinta(canvasElement, apiKey, onStatusUpdate) {
-  if (navigator.onLine && apiKey) {
+  const chiavePulita = (apiKey || '').trim();
+
+  if (navigator.onLine && chiavePulita) {
     try {
       onStatusUpdate("Online: analisi con Gemini AI...");
-      const giocatori = await estraiConGemini(canvasElement, apiKey);
+      const giocatori = await estraiConGemini(canvasElement, chiavePulita);
       return { fonte: "GEMINI_CLOUD", dati: giocatori };
     } catch (errore) {
       console.warn("Fallback su Tesseract offline:", errore);
-      onStatusUpdate("Errore API (" + errore.message + "): passaggio a OCR offline...");
+      onStatusUpdate("Errore Gemini (" + errore.message + "): passaggio a OCR offline...");
+      await new Promise(r => setTimeout(r, 2500));
     }
+  } else if (!chiavePulita) {
+    onStatusUpdate("API Key mancante: avvio OCR locale Tesseract...");
+    await new Promise(r => setTimeout(r, 1500));
   } else {
-    onStatusUpdate("Avvio OCR locale Tesseract...");
+    onStatusUpdate("Offline: avvio OCR locale Tesseract...");
   }
 
   const giocatoriOffline = await estraiConTesseractOffline(canvasElement, onStatusUpdate);
@@ -40,18 +46,35 @@ async function elaboraDistinta(canvasElement, apiKey, onStatusUpdate) {
 
 async function estraiConGemini(canvasElement, apiKey) {
   const base64Image = canvasElement.toDataURL('image/jpeg', 0.85).split(',')[1];
-  const proto = 'ht' + 'tps://';
-  const host = 'generativelanguage.googleapis.' + 'com';
-  const url = proto + host + '/v1beta/models/gemini-2.5-flash:generateContent';
+  const url = `https://googleapis.com{encodeURIComponent(apiKey)}`;
+
+  const promptTesto = `
+Analizza questa immagine di una distinta di gara della Federazione Italiana Rugby (Mod. B).
+Estrai dall'alto verso il basso i giocatori titolari, i giocatori in panchina e l'allenatore in fondo.
+
+Regole rigorose:
+1. GIOCATORI TITOLARI (prime 15 righe) E GIOCATORI IN PANCHINA (sezione "Giocatori in panchina"):
+   - Ignora la riga separatrice "Giocatori in panchina" e le eventuali righe vuote con puntini.
+   - "maglia": numero di maglia definitivo (1-99). Se il numero stampato è barrato o corretto a penna (es. 11 corretto in 35), restituisci il numero scritto a penna.
+   - "ruolo": sigla nella colonna Ruolo (es. E, AD, CS, CD, AS, MA, MM, 3C, 3S, 3D, 2S, 2D, PD, T, PS, oppure RI per la panchina).
+   - "cognome_nome": trascrivi "COGNOME, NOME" in maiuscolo. MANTIENI le diciture (IL), (V), (C) e le eventuali indicazioni di ruolo in panchina come (PS/T) o (T) se presenti accanto al nome. NON includere numero tessera FIR, data di nascita o numero documento.
+2. ALLENATORE (in fondo al foglio, sotto "Sostituzioni"):
+   - Aggiungi alla fine della lista l'Allenatore (campo "Allenatore:") con:
+     - "maglia": ""
+     - "ruolo": "ALL"
+     - "cognome_nome": "COGNOME, NOME" in maiuscolo (pulito, senza altre diciture).
+
+Restituisci esclusivamente un array JSON valido.
+`;
 
   const responseSchema = {
     type: "ARRAY",
     items: {
       type: "OBJECT",
       properties: {
-        maglia: { type: "STRING", description: "Numero di maglia definitivo (1-99, se corretto a penna usa quello a penna)" },
-        ruolo: { type: "STRING", description: "Sigla del ruolo (es. E, AD, CS, CD, AS, MA, MM, 3C, 3S, 3D, 2S, 2D, PD, T, PS, RI)" },
-        cognome_nome: { type: "STRING", description: "Cognome e Nome del giocatore" }
+        maglia: { type: "STRING", description: "Numero di maglia definitivo (1-99, se corretto a penna usa quello a penna; vuoto per allenatore)" },
+        ruolo: { type: "STRING", description: "Sigla del ruolo (es. E, AD, CS, CD, AS, MA, MM, 3C, 3S, 3D, 2S, 2D, PD, T, PS, RI, ALL)" },
+        cognome_nome: { type: "STRING", description: "Cognome e Nome (con eventuali sigle (IL), (V), (C) per i giocatori; pulito per l'allenatore)" }
       },
       required: ["maglia", "ruolo", "cognome_nome"]
     }
@@ -60,7 +83,7 @@ async function estraiConGemini(canvasElement, apiKey) {
   const payload = {
     contents: [{
       parts: [
-        { text: "Estrai dal Mod. B tutti i giocatori dall'alto verso il basso (titolari e riserve sotto 'Giocatori in panchina'). Ignora la riga separatrice 'Giocatori in panchina' e le righe vuote con puntini. Se un numero di maglia è barrato e riscritto a penna, restituisci il numero scritto a penna." },
+        { text: promptTesto },
         { inline_data: { mime_type: "image/jpeg", data: base64Image } }
       ]
     }],
@@ -72,22 +95,38 @@ async function estraiConGemini(canvasElement, apiKey) {
   };
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const timeoutId = setTimeout(() => controller.abort(), 25000);
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": apiKey.trim()
-    },
-    body: JSON.stringify(payload),
-    signal: controller.signal
-  });
+  let response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      throw new Error("Timeout connessione (25s)");
+    }
+    throw err;
+  }
   clearTimeout(timeoutId);
 
-  if (!response.ok) throw new Error("HTTP " + response.status);
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    const dettagli = errData.error?.message || ("HTTP " + response.status);
+    throw new Error(dettagli);
+  }
+
   const data = await response.json();
-  return JSON.parse(data.candidates[0].content.parts[0].text);
+  const testoRisposta = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!testoRisposta) {
+    throw new Error("Risposta vuota da Gemini");
+  }
+
+  return JSON.parse(testoRisposta);
 }
 
 function miglioraContrasto(sourceCanvas) {
