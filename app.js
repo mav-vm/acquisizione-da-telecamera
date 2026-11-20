@@ -325,13 +325,13 @@ function catturaMirinoEsatto() {
 }
 
 async function eseguiScansioneDaCanvas() {
-	ultimoErroreDebug = '';
+  ultimoErroreDebug = '';
   previewRitaglio.src = canvas.toDataURL('image/jpeg', 0.75);
   previewRitaglio.style.display = 'block';
 
   if (typeof elaboraDistinta !== 'function') {
-  	ultimoErroreDebug = "Funzione elaboraDistinta mancante nel progetto.";
-    stato.innerText = "Errore:"+ ultimoErroreDebug";
+    ultimoErroreDebug = "Funzione elaboraDistinta mancante nel progetto.";
+    stato.innerText = "Errore: " + ultimoErroreDebug;
     return;
   }
 
@@ -346,8 +346,9 @@ async function eseguiScansioneDaCanvas() {
     apriEditorLista(datiTemporanei, trovaMaglieDuplicate(datiTemporanei));
     stato.innerText = "Controlla i dati nel pop-up e premi Conferma.";
   } catch (err) {
-  	ultimoErroreDebug = err.message || String(err);
+    ultimoErroreDebug = err.message || String(err);
     datiTemporanei = creaListaPrecompilata();
+    fonteTemporanea = 'ERRORE_GEMINI';
     apriEditorLista(datiTemporanei, []);
     stato.innerText = "Errore Gemini: premi 'Chiudi / Forza JSON' per leggerlo.";
   }
@@ -371,7 +372,6 @@ btnCopia.addEventListener('click', async () => {
   }
 });
 
-// MODIFICA 2: Funzione per spegnere la camera live e liberare hardware/RAM
 function fermaCameraLive() {
   if (video.srcObject) {
     video.srcObject.getTracks().forEach(track => track.stop());
@@ -384,7 +384,7 @@ function fermaCameraLive() {
 function configuraZoomCamera(stream) {
   const tracks = stream.getVideoTracks();
   if (!tracks || tracks.length === 0) return;
-  currentVideoTrack = tracks[0];
+  currentVideoTrack = tracks.at(0);
   const capabilities = currentVideoTrack.getCapabilities ? currentVideoTrack.getCapabilities() : {};
   if (capabilities.zoom) {
     rangeZoomCamera.min = capabilities.zoom.min || 1;
@@ -420,7 +420,6 @@ function avviaCameraConTimeout(vincoli, ms = 4000) {
 }
 
 async function avviaCameraSicura() {
-  // Evita di riavviare la camera live se siamo appena rientrati da un tentativo di scatto nativo
   if (sessionStorage.getItem('usa_nativa') === '1') {
     sessionStorage.removeItem('usa_nativa');
     stato.innerText = "Se il browser ha ricaricato la pagina, usa 'Scegli da Galleria' per la foto appena scattata.";
@@ -455,36 +454,23 @@ async function avviaCameraSicura() {
 }
 avviaCameraSicura();
 
-// MODIFICA 3: Caricamento immagine con FileReader e indice [0] corretto
 function gestisciFileImmagine(file) {
   if (!file) return;
   sessionStorage.removeItem('usa_nativa');
   btnCopia.style.display = 'none';
   badgeContainer.innerHTML = '';
-  stato.innerText = "Caricamento e ritaglio immagine...";
+  stato.innerText = "Preparazione immagine...";
 
   const reader = new FileReader();
   reader.onload = (event) => {
     const img = new Image();
     img.onload = async () => {
-      const righeTit = parseInt(rangeRigheTit.value, 10) || 15;
-      const righeRis = parseInt(rangeRigheRis.value, 10) || 7;
-      const totaleRighe = righeTit + 2 + (righeRis > 0 ? righeRis + 1 : 0);
-      const altezzaTabellaPct = Math.min(0.86, (totaleRighe * 1.82) / 100);
+      const maxDim = 1280;
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
 
-      // Se l'immagine è verticale (foglio A4 intero), ritaglia direttamente la tabella
-      const isVerticale = img.height > img.width * 1.15;
-      const sx = isVerticale ? Math.round(img.width * PDF_CALIBRATION.tableLeft) : 0;
-      const sy = isVerticale ? Math.round(img.height * PDF_CALIBRATION.tableTop) : 0;
-      const sw = isVerticale ? Math.round(img.width * PDF_CALIBRATION.tableWidth) : img.width;
-      const sh = isVerticale ? Math.round(img.height * altezzaTabellaPct) : img.height;
-
-      const maxDim = 1400;
-      const scale = Math.min(1, maxDim / Math.max(sw, sh));
-      canvas.width = Math.round(sw * scale);
-      canvas.height = Math.round(sh * scale);
-
-      canvas.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
       await eseguiScansioneDaCanvas();
     };
     img.onerror = () => {
@@ -498,8 +484,6 @@ function gestisciFileImmagine(file) {
   reader.readAsDataURL(file);
 }
 
-
-// Pulsante 1: Fotocamera Nativa
 const btnFotoNativa = document.getElementById('btnFotoNativa');
 const inputFotoNativa = document.getElementById('inputFotoNativa');
 if (btnFotoNativa && inputFotoNativa) {
@@ -510,13 +494,12 @@ if (btnFotoNativa && inputFotoNativa) {
     inputFotoNativa.click();
   });
   inputFotoNativa.addEventListener('change', (e) => {
-    if (e.target.files && e.target.files[0]) {
-      gestisciFileImmagine(e.target.files[0]);
+    if (e.target.files && e.target.files.length > 0) {
+      gestisciFileImmagine(e.target.files.item(0));
     }
   });
 }
 
-// Pulsante 2: Scegli da Galleria
 const btnGalleria = document.getElementById('btnGalleria');
 const inputGalleria = document.getElementById('inputGalleria');
 if (btnGalleria && inputGalleria) {
@@ -526,8 +509,8 @@ if (btnGalleria && inputGalleria) {
     inputGalleria.click();
   });
   inputGalleria.addEventListener('change', (e) => {
-    if (e.target.files && e.target.files[0]) {
-      gestisciFileImmagine(e.target.files[0]);
+    if (e.target.files && e.target.files.length > 0) {
+      gestisciFileImmagine(e.target.files.item(0));
     }
   });
 }

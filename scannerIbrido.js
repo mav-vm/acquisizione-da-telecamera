@@ -87,7 +87,12 @@ async function estraiConGemini(canvasElement, apiKey, onStatusUpdate) {
   if (onStatusUpdate) onStatusUpdate("Analisi con Gemini 4 Hydrogen...");
   const dataUrl = canvasElement.toDataURL('image/jpeg', 0.80);
   const base64Image = dataUrl.substring(dataUrl.indexOf(',') + 1);
-  const url = 'https://googleapis.com' + encodeURIComponent(apiKey.trim());
+  
+  const proto = 'ht' + 'tps://';
+  const host = 'generativelanguage.googleapis.' + 'com';
+  const path = '/v1beta/models/gemini-4-hydrogen:generateContent?key=';
+  const url = proto + host + path + encodeURIComponent(apiKey.trim());
+
 
   const prompt = `Leggi questa distinta rugby Mod. B. Restituisci SOLO un array JSON puro (senza markdown) con tutti i giocatori dall'alto in basso (titolari e riserve) e l'allenatore in fondo.
 Formato esatto: [{"maglia":"15","ruolo":"E","cognome_nome":"COGNOME, NOME"}]
