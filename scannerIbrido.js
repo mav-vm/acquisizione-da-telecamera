@@ -83,42 +83,77 @@ async function ottieniModelliDisponibili(apiKey) {
   return validi;
 }
 
-async function estraiConGemini(canvasElement, apiKey) {
-  const dataUrl = canvasElement.toDataURL('image/jpeg', 0.75);
+async function estraiConGemini(canvasElement, apiKey, onStatusUpdate) {
+  if (onStatusUpdate) onStatusUpdate("Analisi con Gemini 4 Hydrogen...");
+  const dataUrl = canvasElement.toDataURL('image/jpeg', 0.80);
   const base64Image = dataUrl.substring(dataUrl.indexOf(',') + 1);
-  const url = 'https://googleapis.com' + encodeURIComponent(apiKey.trim());
+  const url = 'https://googleapis.com';
 
-  const prompt = `Leggi questa distinta rugby Mod. B. Restituisci SOLO un array JSON puro (senza markdown \`\`\`) con tutti i giocatori dall'alto in basso (titolari e riserve) e l'allenatore in fondo.
+  const prompt = `Leggi questa distinta rugby Mod. B. Restituisci SOLO un array JSON puro (senza markdown) con tutti i giocatori dall'alto in basso (titolari e riserve) e l'allenatore in fondo.
 Formato esatto: [{"maglia":"15","ruolo":"E","cognome_nome":"COGNOME, NOME"}]
 Regole:
 - Se il numero maglia è corretto a penna, usa quello a penna.
-- Mantieni (IL), (V), (C) e ruoli panchina accanto al nome. Escludi tessera FIR e date.
+- Mantieni (IL), (1L), (V), (C) e ruoli panchina accanto al nome. Escludi tessera FIR e date.
 - Per l'allenatore in fondo usa: {"maglia":"","ruolo":"ALL","cognome_nome":"COGNOME, NOME"}.`;
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{
-        parts: [
-          { text: prompt },
-          { inline_data: { mime_type: 'image/jpeg', data: base64Image } }
-        ]
-      }],
-      generationConfig: { temperature: 0.1 }
-    })
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 25000);
+
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey.trim(),
+        'Api-Revision': '2026-05-20'
+      },
+      body: JSON.stringify({
+        model: 'models/gemini-4-hydrogen',
+        input: [
+          { type: 'text', text: prompt },
+          { type: 'image', data: base64Image, mime_type: 'image/jpeg' }
+        ],
+        generation_config: {
+          thinking_level: 'low'
+        }
+      }),
+      signal: controller.signal
+    });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    throw new Error(err.name === 'AbortError' ? 'Timeout connessione (25s)' : err.message);
+  }
+  clearTimeout(timeoutId);
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || 'HTTP ' + res.status);
+    throw new Error(err.error && err.error.message ? err.error.message : 'HTTP ' + res.status);
   }
 
   const data = await res.json();
-  const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+  
+  // Estrae il testo dall'ultimo step model_output delle Interactions API
+  const steps = data.steps || [];
+  let rawText = '';
+  for (let i = steps.length - 1; i >= 0; i--) {
+    if (steps.at(i).type === 'model_output' && Array.isArray(steps.at(i).content)) {
+      const textBlock = steps.at(i).content.find(c => c.type === 'text');
+      if (textBlock && textBlock.text) {
+        rawText = textBlock.text;
+        break;
+      }
+    }
+  }
+
+  if (!rawText) {
+    throw new Error('Risposta vuota da Gemini 4 Hydrogen');
+  }
+
   const jsonPulito = rawText.replace(/```json|```/g, '').trim();
   return JSON.parse(jsonPulito);
 }
+
 
 
 function preparaStrisciaOCR(sourceCanvas, xPct, wPct) {
