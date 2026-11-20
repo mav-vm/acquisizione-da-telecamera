@@ -131,6 +131,11 @@ Restituisci esclusivamente un array JSON valido.
       }
 
       const data = await response.json();
+      console.log(
+  			"RISPOSTA GREZZA GEMINI",
+  			JSON.stringify(data, null, 2)
+			);
+      
       const candidate = data.candidates && data.candidates;
       const part = candidate && candidate.content && candidate.content.parts && candidate.content.parts;
       const testoRisposta = part && part.text;
