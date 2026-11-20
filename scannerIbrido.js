@@ -45,8 +45,9 @@ async function elaboraDistinta(canvasElement, apiKey, onStatusUpdate) {
 }
 
 async function estraiConGemini(canvasElement, apiKey) {
-  const base64Image = canvasElement.toDataURL('image/jpeg', 0.85).split(',')[1];
-  const url = `https://googleapis.com{encodeURIComponent(apiKey)}`;
+  // Riduciamo leggermente il peso JPEG (0.65) per velocizzare l'upload su rete mobile
+  const base64Image = canvasElement.toDataURL('image/jpeg', 0.65).split(',');
+  const url = 'https://googleapis.com';
 
   const promptTesto = `
 Analizza questa immagine di una distinta di gara della Federazione Italiana Rugby (Mod. B).
@@ -72,9 +73,9 @@ Restituisci esclusivamente un array JSON valido.
     items: {
       type: "OBJECT",
       properties: {
-        maglia: { type: "STRING", description: "Numero di maglia definitivo (1-99, se corretto a penna usa quello a penna; vuoto per allenatore)" },
-        ruolo: { type: "STRING", description: "Sigla del ruolo (es. E, AD, CS, CD, AS, MA, MM, 3C, 3S, 3D, 2S, 2D, PD, T, PS, RI, ALL)" },
-        cognome_nome: { type: "STRING", description: "Cognome e Nome (con eventuali sigle (IL), (V), (C) per i giocatori; pulito per l'allenatore)" }
+        maglia: { type: "STRING" },
+        ruolo: { type: "STRING" },
+        cognome_nome: { type: "STRING" }
       },
       required: ["maglia", "ruolo", "cognome_nome"]
     }
@@ -95,22 +96,26 @@ Restituisci esclusivamente un array JSON valido.
   };
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 25000);
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
 
   let response;
   try {
     response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      mode: "cors",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey.trim()
+      },
       body: JSON.stringify(payload),
       signal: controller.signal
     });
   } catch (err) {
     clearTimeout(timeoutId);
     if (err.name === 'AbortError') {
-      throw new Error("Timeout connessione (25s)");
+      throw new Error("Timeout connessione (30s)");
     }
-    throw err;
+    throw new Error("Blocco rete/CORS (" + window.location.protocol + "): " + err.message);
   }
   clearTimeout(timeoutId);
 
@@ -121,13 +126,14 @@ Restituisci esclusivamente un array JSON valido.
   }
 
   const data = await response.json();
-  const testoRisposta = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  const testoRisposta = data.candidates?.?.content?.parts?.?.text;
   if (!testoRisposta) {
     throw new Error("Risposta vuota da Gemini");
   }
 
   return JSON.parse(testoRisposta);
 }
+
 
 function miglioraContrasto(sourceCanvas) {
   const tempCanvas = document.createElement('canvas');
