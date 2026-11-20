@@ -25,38 +25,66 @@ async function elaboraDistinta(canvasElement, apiKey, onStatusUpdate) {
 
   if (navigator.onLine && chiavePulita) {
     try {
-      onStatusUpdate("Online: analisi con Gemini AI...");
-      const giocatori = await estraiConGemini(canvasElement, chiavePulita);
+      onStatusUpdate("Online: connessione a Gemini AI...");
+      const giocatori = await estraiConGemini(canvasElement, chiavePulita, onStatusUpdate);
       return { fonte: "GEMINI_CLOUD", dati: giocatori };
     } catch (errore) {
-      console.error("Errore Gemini dettagliato:", errore);
-      // Stampa l'errore completo nel box del JSON così puoi leggerlo con calma
+      console.error("Errore Gemini:", errore);
       const boxJson = document.getElementById('outputJson');
       if (boxJson) {
         boxJson.textContent = "ERRORE GEMINI:\n" + errore.message;
       }
-      onStatusUpdate("⚠️ Errore Gemini (leggi dettagli nel riquadro sotto) - Passo a OCR tra 6 secondi...");
-      await new Promise(r => setTimeout(r, 6000));
+      throw new Error("Gemini non disponibile: " + errore.message);
     }
-  } else if (!chiavePulita) {
-    onStatusUpdate("API Key mancante: avvio OCR locale Tesseract...");
-    await new Promise(r => setTimeout(r, 1500));
-  } else {
-    onStatusUpdate("Offline: avvio OCR locale Tesseract...");
   }
 
+  onStatusUpdate("Offline o senza API Key: avvio OCR locale Tesseract...");
   const giocatoriOffline = await estraiConTesseractOffline(canvasElement, onStatusUpdate);
   return { fonte: "TESSERACT_OFFLINE", dati: giocatoriOffline };
 }
 
-async function estraiConGemini(canvasElement, apiKey) {
-  const dataUrl = canvasElement.toDataURL('image/jpeg', 0.65);
-  const base64Image = dataUrl.substring(dataUrl.indexOf(',') + 1);
-  const proto = 'ht' + 'tps://';
-  const host = 'generativelanguage.googleapis.' + 'com';
+// Chiede direttamente a Google quali modelli sono attivi sulla tua chiave API
+async function ottieniModelliDisponibili(apiKey) {
+  const urlLista = 'https://googleapis.com' + encodeURIComponent(apiKey);
+  const res = await fetch(urlLista);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error && err.error.message ? err.error.message : ("Chiave API non valida (HTTP " + res.status + ")"));
+  }
+  const data = await res.json();
+  const tutti = data.models || [];
 
-  // Lista modelli da provare in cascata se il primo è sovraccarico
-  const modelli = ['gemini-3.8-flash', 'gemini-3.8-flash-lite', 'gemini-3.5-flash'];
+  // Filtra solo i modelli Gemini che supportano generateContent (esclude embedding, imagen, ecc.)
+  const validi = tutti
+    .filter(m => m.name && m.name.includes('gemini') && Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+    .map(m => m.name.replace('models/', ''));
+
+  // Dai priorità ai modelli Flash/Pro più recenti
+  validi.sort((a, b) => {
+    const score = (nome) => {
+      let s = 0;
+      if (nome.includes('flash')) s += 10;
+      if (nome.includes('pro')) s += 5;
+      if (nome.includes('lite')) s -= 2;
+      if (nome.includes('exp') || nome.includes('preview')) s -= 1;
+      return s;
+    };
+    return score(b) - score(a);
+  });
+
+  if (validi.length === 0) {
+    throw new Error("Nessun modello Gemini attivo trovato su questa chiave API.");
+  }
+  return validi;
+}
+
+async function estraiConGemini(canvasElement, apiKey, onStatusUpdate) {
+  // Alta qualità (0.85) per leggere perfettamente anche le correzioni a penna
+  const dataUrl = canvasElement.toDataURL('image/jpeg', 0.85);
+  const base64Image = dataUrl.substring(dataUrl.indexOf(',') + 1);
+
+  if (onStatusUpdate) onStatusUpdate("Verifica modelli Gemini attivi...");
+  const modelliAttivi = await ottieniModelliDisponibili(apiKey);
 
   const promptTesto = `
 Analizza questa immagine di una distinta di gara della Federazione Italiana Rugby (Mod. B).
@@ -106,19 +134,17 @@ Restituisci esclusivamente un array JSON valido.
 
   let ultimoErrore = null;
 
-  for (const modello of modelli) {
-    const url = proto + host + '/v1beta/models/' + modello + ':generateContent';
+  // Prova in automatico i primi 4 modelli disponibili finché uno risponde con successo
+  for (const modello of modelliAttivi.slice(0, 4)) {
+    if (onStatusUpdate) onStatusUpdate("Analisi con " + modello + "...");
+    const url = 'https://googleapis.com' + modello + ':generateContent?key=' + encodeURIComponent(apiKey);
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 25000);
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
 
     try {
       const response = await fetch(url, {
         method: "POST",
-        mode: "cors",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": apiKey.trim()
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
         signal: controller.signal
       });
@@ -127,17 +153,12 @@ Restituisci esclusivamente un array JSON valido.
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
         const dettagli = errData.error && errData.error.message ? errData.error.message : ("HTTP " + response.status);
-        throw new Error(dettagli);
+        throw new Error(modello + ": " + dettagli);
       }
 
       const data = await response.json();
-      console.log(
-  			"RISPOSTA GREZZA GEMINI",
-  			JSON.stringify(data, null, 2)
-			);
-      
-      const candidate = data.candidates && data.candidates;
-      const part = candidate && candidate.content && candidate.content.parts && candidate.content.parts;
+      const candidate = data.candidates && data.candidates.at(0);
+      const part = candidate && candidate.content && candidate.content.parts && candidate.content.parts.at(0);
       const testoRisposta = part && part.text;
 
       if (!testoRisposta) {
@@ -148,17 +169,12 @@ Restituisci esclusivamente un array JSON valido.
     } catch (err) {
       clearTimeout(timeoutId);
       ultimoErrore = err.name === 'AbortError' ? new Error("Timeout su " + modello) : err;
-      console.warn("Modello " + modello + " non disponibile, provo il successivo...", ultimoErrore.message);
+      console.warn("Tentativo fallito:", ultimoErrore.message);
     }
   }
 
-  throw ultimoErrore || new Error("Tutti i modelli Gemini sono occupati");
+  throw ultimoErrore || new Error("Nessun modello Gemini ha risposto.");
 }
-
-
-
-
-
 
 function miglioraContrasto(sourceCanvas) {
   const tempCanvas = document.createElement('canvas');
@@ -204,17 +220,18 @@ function analizzaRigheIntereModB(testoGrezzo) {
     if (!upper || upper.includes('PANCHINA') || upper.includes('COGNOME') || upper.includes('ALLENATORE')) continue;
 
     const match = upper.match(/(?:^|\b)(\d{1,2})?\s*\|?\s*(E|AD|CS|CD|AS|MA|MM|3C|3S|3D|2S|2D|PD|T|PS|RI)\s*\|?\s*([A-ZÀ-Ü'.,\s()-]{5,})/);
-    if (match && ruoliValidi.includes(match)) {
-      const nomePulito = match
+    if (match && ruoliValidi.includes(match.at(2))) {
+      const nomePulito = match.at(3)
         .split(/\b\d{5,}\b|\b\d{2}\/\d{2}\/\d{4}\b|\bC\.?I\.?\b|\bPASS\.?\b|\bPAT\.?\b/)
+        .at(0)
         .replace(/[^A-ZÀ-Ü',().\s-]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
 
       if (nomePulito.length >= 4) {
         giocatori.push({
-          maglia: match ? match.trim() : '',
-          ruolo: match.trim(),
+          maglia: match.at(1) ? match.at(1).trim() : '',
+          ruolo: match.at(2).trim(),
           cognome_nome: nomePulito
         });
       }
