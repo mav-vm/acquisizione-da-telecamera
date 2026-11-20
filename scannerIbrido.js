@@ -49,21 +49,14 @@ async function elaboraDistinta(canvasElement, apiKey, onStatusUpdate) {
   return { fonte: "TESSERACT_OFFLINE", dati: giocatoriOffline };
 }
 
-
-
-
-
-
-
-
-
-
 async function estraiConGemini(canvasElement, apiKey) {
   const dataUrl = canvasElement.toDataURL('image/jpeg', 0.65);
   const base64Image = dataUrl.substring(dataUrl.indexOf(',') + 1);
   const proto = 'ht' + 'tps://';
   const host = 'generativelanguage.googleapis.' + 'com';
-  const url = proto + host + '/v1beta/models/gemini-3.8-flash:generateContent';
+
+  // Lista modelli da provare in cascata se il primo è sovraccarico
+  const modelli = ['gemini-3.8-flash', 'gemini-3.8-flash-lite', 'gemini-3.5-flash'];
 
   const promptTesto = `
 Analizza questa immagine di una distinta di gara della Federazione Italiana Rugby (Mod. B).
@@ -111,47 +104,56 @@ Restituisci esclusivamente un array JSON valido.
     }
   };
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  let ultimoErrore = null;
 
-  let response;
-  try {
-    response = await fetch(url, {
-      method: "POST",
-      mode: "cors",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey.trim()
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal
-    });
-  } catch (err) {
-    clearTimeout(timeoutId);
-    if (err.name === 'AbortError') {
-      throw new Error("Timeout connessione (30s)");
+  for (const modello of modelli) {
+    const url = proto + host + '/v1beta/models/' + modello + ':generateContent';
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
+
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        mode: "cors",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey.trim()
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        const dettagli = errData.error && errData.error.message ? errData.error.message : ("HTTP " + response.status);
+        throw new Error(dettagli);
+      }
+
+      const data = await response.json();
+      const candidate = data.candidates && data.candidates;
+      const part = candidate && candidate.content && candidate.content.parts && candidate.content.parts;
+      const testoRisposta = part && part.text;
+
+      if (!testoRisposta) {
+        throw new Error("Risposta vuota da " + modello);
+      }
+
+      return JSON.parse(testoRisposta);
+    } catch (err) {
+      clearTimeout(timeoutId);
+      ultimoErrore = err.name === 'AbortError' ? new Error("Timeout su " + modello) : err;
+      console.warn("Modello " + modello + " non disponibile, provo il successivo...", ultimoErrore.message);
     }
-    throw new Error("Blocco rete/CORS (" + window.location.protocol + "): " + err.message);
-  }
-  clearTimeout(timeoutId);
-
-  if (!response.ok) {
-    const errData = await response.json().catch(() => ({}));
-    const dettagli = errData.error && errData.error.message ? errData.error.message : ("HTTP " + response.status);
-    throw new Error(dettagli);
   }
 
-  const data = await response.json();
-  const candidate = data.candidates && data.candidates;
-  const part = candidate && candidate.content && candidate.content.parts && candidate.content.parts;
-  const testoRisposta = part && part.text;
-
-  if (!testoRisposta) {
-    throw new Error("Risposta vuota da Gemini");
-  }
-
-  return JSON.parse(testoRisposta);
+  throw ultimoErrore || new Error("Tutti i modelli Gemini sono occupati");
 }
+
+
+
+
+
 
 function miglioraContrasto(sourceCanvas) {
   const tempCanvas = document.createElement('canvas');
